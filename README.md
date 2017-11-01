@@ -9,7 +9,7 @@ To get goSpace, do:
 ```terminal
 go get -u github.com/pspaces/gospace
 cd $GOPATH/src/github.com/pspaces/gospace
-git checkout aggregation
+git checkout aggregation-policy
 ```
 To import goSpace into your project, add:
 
