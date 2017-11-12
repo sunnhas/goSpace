@@ -2,8 +2,8 @@ package policy
 
 // Transformation defines a structure for a transformation.
 type Transformation struct {
-	Function interface{}
-	Params   []interface{}
+	Func   interface{}
+	Params []interface{}
 }
 
 // NewTransformation creates a new transformation from a function and optional parameter list params.
@@ -12,12 +12,12 @@ func NewTransformation(function interface{}, params ...interface{}) (tr Transfor
 	return
 }
 
-// Function returns the function associated to the transformation.
-func (tr Transformation) Function() interface{} {
-	return tr.Function
+// Function returns the function associated to the transformation tr.
+func (tr *Transformation) Function() interface{} {
+	return tr.Func
 }
 
-// Parameters returns the parameters associated to the transformation.
-func (tr Transformation) Parameters() []interface{} {
+// Parameters returns the parameters associated to the transformation tr.
+func (tr *Transformation) Parameters() []interface{} {
 	return tr.Params
 }

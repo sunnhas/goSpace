@@ -7,8 +7,8 @@ type AggregationRule struct {
 	Subject Transformations
 }
 
-// NewAggregationRule constructs a new policy given an action a and a list of modifications.
-func NewAggregationRule(a Action, m Transformations) (ar AggregationRule) {
-	ap := AggregationRule{a, m}
-	return ap
+// NewAggregationRule constructs a new policy given an action a and a list of transformation trs.
+func NewAggregationRule(a Action, trs Transformations) (ar AggregationRule) {
+	ar = AggregationRule{Object: a, Subject: trs}
+	return ar
 }

@@ -13,31 +13,35 @@ type Interlabel interface {
 // Label is a structure used to label arbitrary data with additional data.
 // Label has two fields: a unique string identifier and an optional interface value.
 // The interpretation of the optional value depends on the application of the label.
-type Label struct {
-	id  string
-	val interface{}
-}
+type Label Tuple
 
 // NewLabel creates a new label with identifier id and an optional value v.
 func NewLabel(id string, v ...interface{}) (l Label) {
+	var params []interface{}
+
 	if len(v) == 1 {
-		l = Label{id, v}
+		params = []interface{}{id, v[0]}
 	} else {
-		l = Label{id, nil}
+		params = []interface{}{id, nil}
 	}
+
+	l = Label(CreateTuple(params...))
 
 	return l
 }
 
 // Id returns label l's identifier id.
 func (l *Label) Id() (id string) {
-	id = (*l).id
+	t := Tuple(*l)
+	id = (&t).GetFieldAt(0).(string)
 	return id
 }
 
 // Value returns labels l's value v.
 func (l *Label) Value() (v interface{}) {
-	return (*l).val
+	t := Tuple(*l)
+	v = (&t).GetFieldAt(1)
+	return v
 }
 
 // ParenthesisType returns a pair of strings that encapsulates the tuple.

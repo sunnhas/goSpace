@@ -1,9 +1,5 @@
 package policy
 
-import (
-	"reflect"
-)
-
 // Transformations defines a structure for a collection of transformations to be applied.
 type Transformations struct {
 	Tmpl Transformation
@@ -12,24 +8,27 @@ type Transformations struct {
 }
 
 // NewTransformations creates a collection of transformations to be applied.
-// NewTransformations returns a pointer to the collection if exactly 3 types of transformations are specified, otherwise nil is returned.
+// NewTransformations returns a pointer to a collection if exactly 3 types of transformations are specified, otherwise nil is returned.
 func NewTransformations(tr ...*Transformation) (trs *Transformations) {
 	if len(tr) != 3 {
-		trs := nil
+		trs = nil
 	} else {
-		// TODO: Reduce the copy code to something better.
-		trcopy := make([]*Transformation, len(tr))
+		trc := make([]Transformation, len(tr))
 
 		// Make a copy of the transformations.
-		for i, _ := range trcopy {
+		for i, _ := range tr {
 			if tr[i] != nil {
-				trcopy[i] = &NewTransformation(tr[i].Function(), tr[i].Parameters())
+				trans := tr[i]
+				function := trans.Function()
+				params := trans.Parameters()
+				ntr := NewTransformation(function, params...)
+				trc[i] = ntr
 			} else {
-				trcopy[i] = tr[i]
+				trc[i] = Transformation{}
 			}
 		}
 
-		trs = &Transformations{Tmpl: trcopy[0], Mtch: trcopy[1], Rslt: trcopy[2]}
+		trs = &Transformations{Tmpl: trc[0], Mtch: trc[1], Rslt: trc[2]}
 	}
 
 	return trs

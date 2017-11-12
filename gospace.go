@@ -1,6 +1,7 @@
 package gospace
 
 import (
+	pol "github.com/pspaces/gospace/policy"
 	shr "github.com/pspaces/gospace/shared"
 	spc "github.com/pspaces/gospace/space"
 )
@@ -8,6 +9,16 @@ import (
 type Space = spc.Space
 type Tuple = shr.Tuple
 type Template = shr.Template
+
+type Label = shr.Label
+type Labels = shr.Labels
+type LabelledTuple = shr.LabelledTuple
+
+type Action = pol.Action
+type AggregationRule = pol.AggregationRule
+type AggregationPolicy = pol.AggregationPolicy
+type Transformation = pol.Transformation
+type Transformations = pol.Transformations
 
 // NewSpace creates a structure that represents a space.
 func NewSpace(name string) Space {
@@ -43,4 +54,44 @@ func CreateTemplate(fields ...interface{}) Template {
 // TemplateFrame contains all interfaces that can operate on a template.
 type TemplateFrame interface {
 	shr.Intertemplate
+}
+
+// NewLabel creates a structure that represents a label.
+func NewLabel(id string, v ...interface{}) Label {
+	return shr.NewLabel(id, v...)
+}
+
+// NewLabels creates a structure that represents a collection of labels.
+func NewLabels(ll ...Label) Labels {
+	return shr.NewLabels(ll...)
+}
+
+// NewLabelledTuple creates a structure that represents a labelled tuple.
+func NewLabelledTuple(fields ...interface{}) LabelledTuple {
+	return shr.NewLabelledTuple(fields...)
+}
+
+// NewAction creates a structure that represents an action.
+func NewAction(function interface{}, params ...interface{}) *Action {
+	return pol.NewAction(function, params...)
+}
+
+// NewAggregationRule creates a structure that represents an aggregation rule.
+func NewAggregationRule(a Action, trs Transformations) AggregationRule {
+	return pol.NewAggregationRule(a, trs)
+}
+
+// NewAggregationPolicy creates a structure that represents an aggregation policy.
+func NewAggregationPolicy(l Label, r AggregationRule) AggregationPolicy {
+	return pol.NewAggregationPolicy(l, r)
+}
+
+// NewTransformation creates a structure for representing a transformation that can be applied to an action.
+func NewTransformation(function interface{}, params ...interface{}) Transformation {
+	return pol.NewTransformation(function, params...)
+}
+
+// NewTransformations creates a structure for representing collection of transformation that can be applied to an action.
+func NewTransformations(trs ...*Transformation) *Transformations {
+	return pol.NewTransformations(trs...)
 }

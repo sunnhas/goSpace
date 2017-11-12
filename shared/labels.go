@@ -9,6 +9,17 @@ import (
 // Labels purpose is to conveniently manipulate many labels.
 type Labels map[string]Label
 
+// NewLabels creates a new collections of labels from parameter list ll.
+func NewLabels(ll ...Label) (ls Labels) {
+	ls = make(Labels)
+
+	for _, l := range ll {
+		ls.Add(NewLabel((&l).Id(), (&l).Value()))
+	}
+
+	return ls
+}
+
 // Add adds a label l to label set ls.
 // Add returns true if the label has been added, and false otherwise.
 func (ls *Labels) Add(l Label) (b bool) {

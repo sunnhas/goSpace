@@ -9,47 +9,57 @@ import (
 // LabelledTuple is a labelled tuple containing a list of fields and a label set.
 // Fields can be any data type and is used to store data.
 // TupleLabels is a label set that is associated to the tuple itself.
-type LabelledTuple struct {
-	Fields      []interface{}
-	TupleLabels Labels
-}
+type LabelledTuple Tuple
 
 // NewLabelledTuple creates a labelled tuple according to the labels and values present in the fields.
-func NewLabelledTuple(labels *Labels, fields ...interface{}) LabelledTuple {
-	tf := make([]interface{}, len(fields))
-	copy(tf, fields)
+// NewLabelledTuple searches the first field for labels.
+func NewLabelledTuple(fields ...interface{}) (lt LabelledTuple) {
+	if len(fields) == 0 {
+		lt = LabelledTuple(CreateTuple(Labels{}))
+	} else {
+		var lbls Labels
 
-	ls := make(Labels)
-	for _, v := range labels.Labelling() {
-		labelp := labels.Retrieve(v)
-		if labelp != nil {
-			ls.Add(*labelp)
+		if len(fields) == 0 {
+			lbls = Labels{}
+		} else {
+			lbls = fields[0].(Labels)
+			lblsc := make(Labels)
+			for _, v := range lbls.Labelling() {
+				lbl := lbls.Retrieve(v)
+				lblsc.Add(NewLabel(lbl.Id(), lbl.Value()))
+			}
+			lbls = lblsc
+		}
+
+		if len(fields) < 1 {
+			lt = LabelledTuple(CreateTuple(lbls))
+		} else {
+			fields[0] = lbls
+			lt = LabelledTuple(CreateTuple(fields...))
 		}
 	}
 
-	tuple := LabelledTuple{tf, ls}
-
-	return tuple
+	return lt
 }
 
 // Length returns the amount of fields of the tuple.
 func (lt *LabelledTuple) Length() int {
-	return len((*lt).Fields)
+	return len((*lt).Fields) - 1
 }
 
 // GetFieldAt returns the i'th field of the tuple.
 func (lt *LabelledTuple) GetFieldAt(i int) interface{} {
-	return (*lt).Fields[i]
+	return (*lt).Fields[i+1]
 }
 
 // SetFieldAt sets the i'th field of the tuple to the value of val.
 func (lt *LabelledTuple) SetFieldAt(i int, val interface{}) {
-	(*lt).Fields[i] = val
+	(*lt).Fields[i+1] = val
 }
 
 // Labels returns the label set belonging to the labelled tuple.
 func (lt *LabelledTuple) Labels() (ls Labels) {
-	return (*lt).TupleLabels
+	return (*lt).Fields[0].(Labels)
 }
 
 // MatchTemplate pattern matches labelled tuple t against the template tp.

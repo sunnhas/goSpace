@@ -56,6 +56,8 @@ func NewRemoteSpaceAlt(url string) (ptp *PointToPoint, ts *TupleSpace) {
 // registerTypes registers all the types necessary for the implementation.
 func registerTypes() {
 	// Register default structures for communication.
+	gob.Register(Label{})
+	gob.Register(Labels{})
 	gob.Register(Template{})
 	gob.Register(Tuple{})
 	gob.Register(TypeField{})
