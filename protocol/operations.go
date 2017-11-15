@@ -19,4 +19,6 @@ const (
 	QueryPResponse   = "QUERYP_RESPONSE"
 	QueryAllRequest  = "QUERYALL_REQUEST"
 	QueryAllResponse = "QUERYALL_RESPONSE"
+	QueryAggRequest  = "QUERYAGG_REQUEST"
+	QueryAggResponse = "QUERYAGG_RESPONSE"
 )

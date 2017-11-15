@@ -65,6 +65,8 @@ func FuncName(function interface{}) (s string) {
 	var fn reflect.Value
 	if reflect.TypeOf(function) == reflect.TypeOf(reflect.Value{}) {
 		fn = function.(reflect.Value)
+	} else if reflect.TypeOf(function) == reflect.TypeOf(reflect.Method{}) {
+		fn = (function.(reflect.Method)).Func
 	} else {
 		fn = reflect.ValueOf(function)
 	}

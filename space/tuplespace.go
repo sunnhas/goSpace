@@ -3,6 +3,8 @@ package space
 import (
 	"encoding/gob"
 	"fmt"
+	//"github.com/choleraehyq/gofunctools/functools"
+	. "github.com/pspaces/gospace/policy"
 	. "github.com/pspaces/gospace/protocol"
 	. "github.com/pspaces/gospace/shared"
 	"log"
@@ -15,11 +17,12 @@ import (
 // it to secure mutual exclusion.
 // Furthermore a port number to locate it.
 type TupleSpace struct {
-	muTuples         *sync.RWMutex   // Lock for the tuples[].
-	muWaitingClients *sync.Mutex     // Lock for the waitingClients[].
-	tuples           []Tuple         // Tuples in the tuple space.
-	port             string          // Port number of the tuple space.
-	waitingClients   []WaitingClient // Structure for clients that couldn't initially find a matching tuple.
+	muTuples         *sync.RWMutex     // Lock for the tuples[].
+	muWaitingClients *sync.Mutex       // Lock for the waitingClients[].
+	tuples           []Tuple           // Tuples in the tuple space.
+	port             string            // Port number of the tuple space.
+	waitingClients   []WaitingClient   // Structure for clients that couldn't initially find a matching tuple.
+	policy           *ComposablePolicy // Policy for controlling operations.
 }
 
 func CreateTupleSpace(port int) (ts *TupleSpace) {
@@ -330,6 +333,11 @@ func (ts *TupleSpace) handle(conn net.Conn) {
 		// Body of message must be empty.
 		template := message.GetBody().(Template)
 		ts.handleQueryAll(conn, template)
+	case QueryAggRequest:
+		function := message.Function()
+		// Body of message must be empty.
+		template := message.GetBody().(Template)
+		ts.handleQueryAgg(conn, function, template)
 	default:
 		fmt.Println("Can't handle operation. Contact client at ", conn.RemoteAddr())
 		return
@@ -498,6 +506,31 @@ func (ts *TupleSpace) handleQueryAll(conn net.Conn, temp Template) {
 
 	if errEnc != nil {
 		panic("handleQueryAll")
+	}
+}
+
+// handleQueryAgg is a blocking method that will return an aggregated tuple from the tuple
+// space in a list.
+func (ts *TupleSpace) handleQueryAgg(conn net.Conn, fun interface{}, temp Template) {
+	defer handleRecover()
+
+	readChannel := make(chan []Tuple)
+	go ts.queryAll(temp, readChannel)
+	// tuples := <-readChannel
+	_ = <-readChannel
+
+	enc := gob.NewEncoder(conn)
+
+	// TODO: Retrieve function from a function register.
+	init := temp.NewTuple()
+	// aggregate, _ := functools.Reduce(fun, tuples, init)
+	// result = aggregate.(Tuple)
+	result := init
+
+	errEnc := enc.Encode(result)
+
+	if errEnc != nil {
+		panic("handleQueryAgg")
 	}
 }
 

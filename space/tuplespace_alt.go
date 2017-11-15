@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/choleraehyq/gofunctools/functools"
+	. "github.com/pspaces/gospace/policy"
 	. "github.com/pspaces/gospace/protocol"
 	. "github.com/pspaces/gospace/shared"
 	"net"
@@ -12,7 +13,7 @@ import (
 )
 
 // NewSpaceAlt creates a representation of a new tuple space.
-func NewSpaceAlt(url string) (ptp *PointToPoint, ts *TupleSpace) {
+func NewSpaceAlt(url string, policy ...*ComposablePolicy) (ptp *PointToPoint, ts *TupleSpace) {
 	registerTypes()
 
 	uri, err := NewSpaceURI(url)
@@ -22,6 +23,10 @@ func NewSpaceAlt(url string) (ptp *PointToPoint, ts *TupleSpace) {
 		// TODO: a host can resolve to multiple addresses.
 		// TODO: For now, accept this limitation, and fix it soon.
 		ts = &TupleSpace{muTuples: new(sync.RWMutex), muWaitingClients: new(sync.Mutex), port: strings.Join([]string{"", uri.Port()}, ":")}
+
+		if len(policy) == 1 {
+			(*ts).policy = policy[0]
+		}
 
 		go ts.Listen()
 
@@ -81,7 +86,7 @@ func Put(ptp PointToPoint, tupleFields ...interface{}) bool {
 	// Make sure the connection closes when method returns.
 	defer conn.Close()
 
-	errSendMessage := sendMessage(conn, PutRequest, t)
+	errSendMessage := sendMessage(conn, PutRequest, nil, t)
 
 	// Error check for sending message.
 	if errSendMessage != nil {
@@ -120,7 +125,7 @@ func PutP(ptp PointToPoint, tupleFields ...interface{}) bool {
 	// Make sure the connection closes when method returns.
 	defer conn.Close()
 
-	errSendMessage := sendMessage(conn, PutPRequest, t)
+	errSendMessage := sendMessage(conn, PutPRequest, nil, t)
 
 	// Error check for sending message.
 	if errSendMessage != nil {
@@ -160,7 +165,7 @@ func getAndQuery(ptp PointToPoint, operation string, tempFields ...interface{}) 
 	// Make sure the connection closes when method returns.
 	defer conn.Close()
 
-	errSendMessage := sendMessage(conn, operation, t)
+	errSendMessage := sendMessage(conn, operation, nil, t)
 
 	// Error check for sending message.
 	if errSendMessage != nil {
@@ -211,7 +216,7 @@ func getPAndQueryP(ptp PointToPoint, operation string, tempFields ...interface{}
 	// Make sure the connection closes when method returns.
 	defer conn.Close()
 
-	errSendMessage := sendMessage(conn, operation, t)
+	errSendMessage := sendMessage(conn, operation, nil, t)
 
 	// Error check for sending message.
 	if errSendMessage != nil {
@@ -268,7 +273,7 @@ func getAllAndQueryAll(ptp PointToPoint, operation string, tempFields ...interfa
 
 	// Initiallise dummy tuple.
 	// TODO: Get rid of the dummy tuple.
-	errSendMessage := sendMessage(conn, operation, t)
+	errSendMessage := sendMessage(conn, operation, nil, t)
 
 	// Error check for sending message.
 	if errSendMessage != nil {
@@ -336,7 +341,41 @@ func GetAgg(ptp PointToPoint, aggFunc interface{}, tempFields ...interface{}) (T
 // The method is nonblocking and will return a tuple found by aggregating the matched typles.
 // The resulting tuple is empty if no matching occurs or the aggregation function can not aggregate the matched tuples.
 func QueryAgg(ptp PointToPoint, aggFunc interface{}, tempFields ...interface{}) (Tuple, bool) {
-	return getAggAndQueryAgg(ptp, QueryAllRequest, aggFunc, tempFields...)
+	t := CreateTemplate(tempFields...)
+	tuple := CreateTuple(nil)
+	var errSendMessage, errReceiveMessage error
+	conn, errDial := establishConnection(ptp)
+
+	// Error check for establishing connection.
+	if errDial != nil {
+		fmt.Println("ErrDial:", errDial)
+		return tuple, false
+	}
+
+	// Make sure the connection closes when method returns.
+	defer conn.Close()
+
+	errSendMessage = sendMessage(conn, QueryAggRequest, aggFunc, t)
+
+	// Error check for sending message.
+	if errSendMessage != nil {
+		fmt.Println("ErrSendMessage:", errSendMessage)
+		return tuple, false
+	}
+
+	tuple, errReceiveMessage = receiveMessageTuple(conn)
+
+	// Error check for receiving response.
+	if errReceiveMessage != nil {
+		fmt.Println("ErrReceiveMessage:", errReceiveMessage)
+		return tuple, false
+	}
+
+	tuple.WriteToVariables(tempFields...)
+
+	// Return result.
+	return tuple, true
+	// return getAggAndQueryAgg(ptp, QueryAllRequest, aggFunc, tempFields...)
 }
 
 func getAggAndQueryAgg(ptp PointToPoint, operation string, aggFunc interface{}, tempFields ...interface{}) (Tuple, bool) {
@@ -369,17 +408,22 @@ func establishConnection(ptp PointToPoint) (net.Conn, error) {
 	return conn, errDial
 }
 
-func sendMessage(conn net.Conn, operation string, t interface{}) error {
+func sendMessage(conn net.Conn, operation string, f interface{}, t interface{}) error {
 	// Create encoder to the connection.
 	enc := gob.NewEncoder(conn)
 
-	// Register the type of t for Encode to handle it.
+	// Register the type of f and t for Encode to handle it.
+	gob.Register(f)
 	gob.Register(t)
-	//registrer typefield to match types
+	// Registrer typefield to match types.
 	gob.Register(TypeField{})
 
 	// Generate the message.
-	message := CreateMessage(operation, t)
+	var fun interface{}
+	if f != nil {
+		fun = FuncName(f)
+	}
+	message := CreateMessage(operation, fun, t)
 
 	// Sends the message to the connection through the encoder.
 	errEnc := enc.Encode(message)
