@@ -1,7 +1,7 @@
 package policy
 
 import (
-	"github.com/pspaces/gospace/shared"
+	"github.com/pspaces/gospace/function"
 )
 
 // Action is a structure defining an operation.
@@ -13,12 +13,12 @@ type Action struct {
 }
 
 // NewAction creates an action given a function and optionally a parameter list params.
-func NewAction(function interface{}, params ...interface{}) (a *Action) {
-	operator := shared.FuncName(function)
+func NewAction(fun interface{}, params ...interface{}) (a *Action) {
+	operator := function.FuncName(fun)
 
-	signature := shared.Signature(function)
+	signature := function.Signature(fun)
 
-	a = &Action{Oper: operator, Sign: signature, Func: function, Params: params}
+	a = &Action{Oper: operator, Sign: signature, Func: fun, Params: params}
 
 	return a
 }

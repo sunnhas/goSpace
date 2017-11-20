@@ -21,4 +21,8 @@ const (
 	QueryAllResponse = "QUERYALL_RESPONSE"
 	QueryAggRequest  = "QUERYAGG_REQUEST"
 	QueryAggResponse = "QUERYAGG_RESPONSE"
+	GetAggRequest    = "GETAGG_REQUEST"
+	GetAggResponse   = "GETAGG_RESPONSE"
+	PutAggRequest    = "PUTAGG_REQUEST"
+	PutAggResponse   = "PUTAGG_RESPONSE"
 )

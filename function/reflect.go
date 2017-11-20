@@ -1,4 +1,4 @@
-package shared
+package function
 
 import (
 	"fmt"
@@ -59,16 +59,32 @@ func ExtractCallerInfo(depth int) (ci CallerInfo) {
 	return ci
 }
 
+// IsFunc returns true if interface fun is a function or method and false otherwise.
+func IsFunc(fun interface{}) (b bool) {
+	var fn reflect.Value
+	if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Value{}) {
+		fn = fun.(reflect.Value)
+	} else if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Method{}) {
+		fn = (fun.(reflect.Method)).Func
+	} else {
+		fn = reflect.ValueOf(fun)
+	}
+
+	b = fn.Type().Kind() == reflect.Func
+
+	return b
+}
+
 // FuncName returns name of the function as a string s.
 // FuncName will panic if function is not a function or method.
-func FuncName(function interface{}) (s string) {
+func FuncName(fun interface{}) (s string) {
 	var fn reflect.Value
-	if reflect.TypeOf(function) == reflect.TypeOf(reflect.Value{}) {
-		fn = function.(reflect.Value)
-	} else if reflect.TypeOf(function) == reflect.TypeOf(reflect.Method{}) {
-		fn = (function.(reflect.Method)).Func
+	if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Value{}) {
+		fn = fun.(reflect.Value)
+	} else if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Method{}) {
+		fn = (fun.(reflect.Method)).Func
 	} else {
-		fn = reflect.ValueOf(function)
+		fn = reflect.ValueOf(fun)
 	}
 
 	if fn.Type().Kind() != reflect.Func {
@@ -85,12 +101,12 @@ func FuncName(function interface{}) (s string) {
 // Signature returns the function signature of any function or method.
 // Signature accepts an optional name parameter used in the function signature.
 // Signature will panic if function is not a function or method.
-func Signature(function interface{}, name ...string) (sgn string) {
+func Signature(fun interface{}, name ...string) (sgn string) {
 	var fn reflect.Value
-	if reflect.TypeOf(function) == reflect.TypeOf(reflect.Value{}) {
-		fn = function.(reflect.Value)
+	if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Value{}) {
+		fn = fun.(reflect.Value)
 	} else {
-		fn = reflect.ValueOf(function)
+		fn = reflect.ValueOf(fun)
 	}
 
 	if fn.Type().Kind() != reflect.Func {
@@ -138,4 +154,21 @@ func Signature(function interface{}, name ...string) (sgn string) {
 	}
 
 	return sgn
+}
+
+// Type returns the type of a function or method.
+func Type(fun interface{}) (t reflect.Type) {
+	var fn reflect.Value
+	if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Value{}) {
+		fn = fun.(reflect.Value)
+	} else if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Method{}) {
+		fn = (fun.(reflect.Method)).Func
+	} else {
+		fn = reflect.ValueOf(fun)
+	}
+
+	fmt.Printf("%v", fn.Type())
+	t = fn.Type()
+
+	return t
 }

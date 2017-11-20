@@ -1,7 +1,7 @@
-package protocol
+package function
 
 import (
-	"github.com/pspaces/gospace/shared"
+	"fmt"
 	"regexp"
 	"runtime"
 	"strings"
@@ -11,10 +11,22 @@ import (
 // Namespace is a representation of a location of a function.
 type Namespace string
 
-// DeepCopy creates a copy of the namespace.
+// NewNamespace creates a new namespace from a string.
+func NewNamespace(s string) (ns Namespace) {
+	ns = Namespace(s)
+	return ns
+}
+
+// DeepCopy creates a copy of a namespace ref.
 func (ref *Namespace) DeepCopy() (ns Namespace) {
 	ns = (*ref)[:len(*ref)] + ""
 	return ns
+}
+
+// String returns a print friendly representation of namespace ref.
+func (ref *Namespace) String() (s string) {
+	s = string(ref.DeepCopy())
+	return s
 }
 
 // Function is a representation of a function.
@@ -37,8 +49,8 @@ type LanguageBinding struct {
 	ExternalToInternal *sync.Map // [*Namespace]*Namespace
 }
 
-// FunctionRegistry represents the available functions between languages.
-type FunctionRegistry struct {
+// Registry represents the available functions between languages.
+type Registry struct {
 	NameDict NamespaceDictionary
 	FuncBind FunctionBinding
 	LangBind LanguageBinding
@@ -103,6 +115,61 @@ func (nsd *NamespaceDictionary) Value(ref *Namespace) (ns Namespace) {
 	return ns
 }
 
+// String returns a print friendly representation of a namespace dictionary nsd.
+func (nsd NamespaceDictionary) String() (s string) {
+	var refEntries, nameEntries []string
+
+	entries := []string{}
+	entry := make(chan string)
+
+	go func() {
+		nsd.RefLookUp.Range(func(k, v interface{}) bool {
+			entry <- fmt.Sprintf("\t%v: %v", k, v)
+			return true
+		})
+		close(entry)
+	}()
+
+	for entry := range entry {
+		entries = append(entries, entry)
+	}
+
+	refEntries = entries
+
+	entries = []string{}
+	entry = make(chan string)
+
+	go func() {
+		nsd.NameLookUp.Range(func(k, v interface{}) bool {
+			entry <- fmt.Sprintf("\t%v: %v", k, v)
+			return true
+		})
+		close(entry)
+	}()
+
+	for entry := range entry {
+		entries = append(entries, entry)
+	}
+
+	nameEntries = entries
+
+	refs := strings.Join(refEntries, ",\n")
+
+	if refs != "" {
+		refs = fmt.Sprintf("\n%s\n", refs)
+	}
+
+	names := strings.Join(nameEntries, ",\n")
+
+	if names != "" {
+		names = fmt.Sprintf("\n%s\n", names)
+	}
+
+	s = fmt.Sprintf("%s%s%s%s%s%s", "{", refs, "}", "{", names, "}")
+
+	return s
+}
+
 // NewFunctionBinding creates a binding between a reference to a namespace and a function.
 func NewFunctionBinding() (fb FunctionBinding) {
 	b := new(sync.Map)
@@ -144,6 +211,32 @@ func (fb *FunctionBinding) Function(ref *Namespace) (fun *Function) {
 	}
 
 	return fun
+}
+
+// String returns a print friendly representation of a function binding fb.
+func (fb FunctionBinding) String() (s string) {
+	entries := []string{}
+	entry := make(chan string)
+
+	go func() {
+		fb.Binding.Range(func(k, v interface{}) bool {
+			entry <- fmt.Sprintf("\t%v: %v", k, v)
+			return true
+		})
+		close(entry)
+	}()
+
+	for entry := range entry {
+		entries = append(entries, entry)
+	}
+
+	binding := strings.Join(entries, ",\n")
+	if binding != "" {
+		s = fmt.Sprintf("\n%s\n", binding)
+	}
+	s = fmt.Sprintf("%s%s%s", "{", s, "}")
+
+	return s
 }
 
 // NewLanguageBinding creates a two-way binding lb between two namespaces in two different languages.
@@ -209,34 +302,83 @@ func (lb *LanguageBinding) Internal(exter *Namespace) (inter *Namespace) {
 	return inter
 }
 
+// String returns a print friendly representation of a language binding lb.
+func (lb LanguageBinding) String() (s string) {
+	var iteEntries, etiEntries []string
+
+	entries := []string{}
+	entry := make(chan string)
+
+	go func() {
+		lb.InternalToExternal.Range(func(k, v interface{}) bool {
+			entry <- fmt.Sprintf("\t%v: %v", k, v)
+			return true
+		})
+		close(entry)
+	}()
+
+	for entry := range entry {
+		entries = append(entries, entry)
+	}
+
+	iteEntries = entries
+
+	entries = []string{}
+	entry = make(chan string)
+
+	go func() {
+		lb.ExternalToInternal.Range(func(k, v interface{}) bool {
+			entry <- fmt.Sprintf("\t%v: %v", k, v)
+			return true
+		})
+		close(entry)
+	}()
+
+	for entry := range entry {
+		entries = append(entries, entry)
+	}
+
+	etiEntries = entries
+
+	ites := strings.Join(iteEntries, ",\n")
+
+	if ites != "" {
+		ites = fmt.Sprintf("\n%s\n", ites)
+	}
+
+	etis := strings.Join(etiEntries, ",\n")
+
+	if etis != "" {
+		etis = fmt.Sprintf("\n%s\n", etis)
+	}
+
+	s = fmt.Sprintf("%s%s%s%s%s%s", "{", ites, "}", "{", etis, "}")
+
+	return s
+}
+
 // NewFunctionRegistry creates a function registry.
-func NewFunctionRegistry() (fr FunctionRegistry) {
+func NewRegistry() (fr Registry) {
 	nsd := NewNamespaceDictionary()
 	fb := NewFunctionBinding()
 	lb := NewLanguageBinding()
-	fr = FunctionRegistry{NameDict: nsd, FuncBind: fb, LangBind: lb}
+	fr = Registry{NameDict: nsd, FuncBind: fb, LangBind: lb}
 	return fr
 }
 
 // Register performs a registring of function fun to function registry fr.
 // Register returns true if registring of function fun was succesful, and false otherwise.
-func (fr *FunctionRegistry) Register(fun Function) (status bool) {
-	funcName := strings.Replace(shared.FuncName(fun), " ", "", -1)
-	funcSign := strings.Replace(shared.Signature(fun), " ", "", -1)
+func (fr *Registry) Register(fun Function) (status bool) {
+	internal := internalNamespace(fun)
+	external := externalNamespace(fun)
 
-	reVersion := regexp.MustCompile("(\\d)\\.(\\d)(\\.(\\d))?")
-	goVersion := reVersion.FindString(runtime.Version())
-
-	internalNamespace := Namespace(strings.Join([]string{funcName, ":", funcSign}, ""))
-	externalNamespace := Namespace(strings.Join([]string{"func", "://", "golang", ":", goVersion, "/", funcName, ":", funcSign}, ""))
-
-	addedInternal := (*fr).NameDict.Add(internalNamespace)
-	addedExternal := (*fr).NameDict.Add(externalNamespace)
+	addedInternal := (*fr).NameDict.Add(internal)
+	addedExternal := (*fr).NameDict.Add(external)
 
 	if addedInternal && addedExternal {
 		// Get the namespace references.
-		refInternal := (*fr).NameDict.Reference(internalNamespace)
-		refExternal := (*fr).NameDict.Reference(externalNamespace)
+		refInternal := (*fr).NameDict.Reference(internal)
+		refExternal := (*fr).NameDict.Reference(external)
 
 		// Bind the reference to a namespace to the reference of the function.
 		bound := (*fr).FuncBind.Add(refInternal, &fun)
@@ -252,23 +394,17 @@ func (fr *FunctionRegistry) Register(fun Function) (status bool) {
 
 // Unregister performs a unregistring of function fun from function registry fr.
 // Unregister returns true if unregistring of function fun was succesful, and false otherwise.
-func (fr *FunctionRegistry) Unregister(fun Function) (status bool) {
-	funcName := strings.Replace(shared.FuncName(fun), " ", "", -1)
-	funcSign := strings.Replace(shared.Signature(fun), " ", "", -1)
+func (fr *Registry) Unregister(fun Function) (status bool) {
+	internal := internalNamespace(fun)
+	external := externalNamespace(fun)
 
-	reVersion := regexp.MustCompile("(\\d)\\.(\\d)(\\.(\\d))?")
-	goVersion := reVersion.FindString(runtime.Version())
-
-	internalNamespace := Namespace(strings.Join([]string{funcName, ":", funcSign}, ""))
-	externalNamespace := Namespace(strings.Join([]string{"func", "://", "golang", ":", goVersion, "/", funcName, ":", funcSign}, ""))
-
-	refInternal := (*fr).NameDict.Reference(internalNamespace)
-	refExternal := (*fr).NameDict.Reference(externalNamespace)
+	refInternal := (*fr).NameDict.Reference(internal)
+	refExternal := (*fr).NameDict.Reference(external)
 
 	if refInternal != nil && refExternal != nil {
 		// Remove the namespace references.
-		(*fr).NameDict.Remove(internalNamespace)
-		(*fr).NameDict.Remove(externalNamespace)
+		(*fr).NameDict.Remove(internal)
+		(*fr).NameDict.Remove(external)
 
 		// Remove the binding the reference to a namespace to the reference of the function.
 		(*fr).FuncBind.Remove(refInternal)
@@ -284,35 +420,21 @@ func (fr *FunctionRegistry) Unregister(fun Function) (status bool) {
 
 // Check performs a check if function fun is registered in function registry fr.
 // Check returns true if function fun is registered, and false otherwise.
-func (fr *FunctionRegistry) Check(fun Function) (status bool) {
-	funcName := strings.Replace(shared.FuncName(fun), " ", "", -1)
-	funcSign := strings.Replace(shared.Signature(fun), " ", "", -1)
-
-	reVersion := regexp.MustCompile("(\\d)\\.(\\d)(\\.(\\d))?")
-	goVersion := reVersion.FindString(runtime.Version())
-
-	internalNamespace := Namespace(strings.Join([]string{funcName, ":", funcSign}, ""))
-	externalNamespace := Namespace(strings.Join([]string{"func", "://", "golang", ":", goVersion, "/", funcName, ":", funcSign}, ""))
-
-	refInternal := (*fr).NameDict.Reference(internalNamespace)
-	refExternal := (*fr).NameDict.Reference(externalNamespace)
-
+func (fr *Registry) Check(fun Function) (status bool) {
+	internal := internalNamespace(fun)
+	external := externalNamespace(fun)
+	refInternal := (*fr).NameDict.Reference(internal)
+	refExternal := (*fr).NameDict.Reference(external)
 	status = refInternal != nil && refExternal != nil
-
 	return status
 }
 
 // Encode returns a pointer to an external namespace ns for function fun.
 // Encode returns nil if the function could not be encoded.
-func (fr *FunctionRegistry) Encode(fun Function) (exter *Namespace) {
+func (fr *Registry) Encode(fun Function) (exter *Namespace) {
 	fr.Register(fun)
-
-	funcName := strings.Replace(shared.FuncName(fun), " ", "", -1)
-	funcSign := strings.Replace(shared.Signature(fun), " ", "", -1)
-
-	internalNamespace := Namespace(strings.Join([]string{funcName, ":", funcSign}, ""))
-
-	refInternal := (*fr).NameDict.Reference(internalNamespace)
+	internal := internalNamespace(fun)
+	refInternal := (*fr).NameDict.Reference(internal)
 	refExternal := (*fr).LangBind.External(refInternal)
 
 	if refExternal != nil {
@@ -327,9 +449,27 @@ func (fr *FunctionRegistry) Encode(fun Function) (exter *Namespace) {
 
 // Decode returns a function fun given an external namespace ns.
 // Decode returns nil if the function could not be found.
-func (fr *FunctionRegistry) Decode(exter Namespace) (fun *Function) {
+func (fr *Registry) Decode(exter Namespace) (fun *Function) {
 	refExternal := (*fr).NameDict.Reference(exter)
 	refInternal := (*fr).LangBind.Internal(refExternal)
 	fun = (*fr).FuncBind.Function(refInternal)
 	return fun
+}
+
+// interalNamespace returns an internal namespace for a function fun.
+func internalNamespace(fun Function) (s Namespace) {
+	funcName := strings.Replace(FuncName(fun), " ", "", -1)
+	funcSign := strings.Replace(Signature(fun), " ", "", -1)
+	s = Namespace(strings.Join([]string{funcName, ":", funcSign}, ""))
+	return s
+}
+
+// exteralNamespace returns an external namespace for a function fun.
+func externalNamespace(fun Function) (s Namespace) {
+	funcName := strings.Replace(FuncName(fun), " ", "", -1)
+	funcSign := strings.Replace(Signature(fun), " ", "", -1)
+	reVersion := regexp.MustCompile("(\\d)\\.(\\d)(\\.(\\d))?")
+	goVersion := reVersion.FindString(runtime.Version())
+	s = Namespace(strings.Join([]string{"func", "://", "golang", ":", goVersion, "/", funcName, ":", funcSign}, ""))
+	return s
 }

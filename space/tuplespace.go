@@ -3,12 +3,14 @@ package space
 import (
 	"encoding/gob"
 	"fmt"
-	//"github.com/choleraehyq/gofunctools/functools"
-	. "github.com/pspaces/gospace/policy"
+	"github.com/choleraehyq/gofunctools/functools"
+	"github.com/pspaces/gospace/function"
+	"github.com/pspaces/gospace/policy"
 	. "github.com/pspaces/gospace/protocol"
 	. "github.com/pspaces/gospace/shared"
 	"log"
 	"net"
+	"reflect"
 	"strconv"
 	"sync"
 )
@@ -17,12 +19,13 @@ import (
 // it to secure mutual exclusion.
 // Furthermore a port number to locate it.
 type TupleSpace struct {
-	muTuples         *sync.RWMutex     // Lock for the tuples[].
-	muWaitingClients *sync.Mutex       // Lock for the waitingClients[].
-	tuples           []Tuple           // Tuples in the tuple space.
-	port             string            // Port number of the tuple space.
-	waitingClients   []WaitingClient   // Structure for clients that couldn't initially find a matching tuple.
-	policy           *ComposablePolicy // Policy for controlling operations.
+	muTuples         *sync.RWMutex            // Lock for the tuples[].
+	muWaitingClients *sync.Mutex              // Lock for the waitingClients[].
+	tuples           []Tuple                  // Tuples in the tuple space.
+	funReg           *function.Registry       // Function registry associated to the tuple space.
+	pol              *policy.ComposablePolicy // Policy associated to the tuple space.
+	port             string                   // Port number of the tuple space.
+	waitingClients   []WaitingClient          // Structure for clients that couldn't initially find a matching tuple.
 }
 
 func CreateTupleSpace(port int) (ts *TupleSpace) {
@@ -30,7 +33,19 @@ func CreateTupleSpace(port int) (ts *TupleSpace) {
 	gob.Register(Tuple{})
 	gob.Register(TypeField{})
 
-	ts = &TupleSpace{muTuples: new(sync.RWMutex), muWaitingClients: new(sync.Mutex), tuples: []Tuple{}, port: strconv.Itoa(port)}
+	muTuples := new(sync.RWMutex)
+	muWaitingClients := new(sync.Mutex)
+	funcReg := function.NewRegistry()
+	var compPol policy.ComposablePolicy = nil
+
+	ts = &TupleSpace{
+		muTuples:         muTuples,
+		muWaitingClients: muWaitingClients,
+		tuples:           []Tuple{},
+		funReg:           &funcReg,
+		pol:              &compPol,
+		port:             strconv.Itoa(port),
+	}
 
 	go ts.Listen()
 
@@ -52,8 +67,10 @@ func (ts *TupleSpace) put(t *Tuple, response chan<- bool) {
 // putP will put a lock on the tuple space add the tuple to the list of
 // tuples and unlock the list.
 func (ts *TupleSpace) putP(t *Tuple) {
-
 	ts.muWaitingClients.Lock()
+
+	fr := (*ts).funReg
+
 	// Check if someone is waiting for the tuple that is about to be placed.
 	for i := 0; i < len(ts.waitingClients); i++ {
 		waitingClient := ts.waitingClients[i]
@@ -64,6 +81,7 @@ func (ts *TupleSpace) putP(t *Tuple) {
 			// If this is reached, the tuple matched the template and the
 			// tuple is send to the response channel of the waiting client.
 			clientResponse := waitingClient.GetResponseChan()
+			funcEncode(fr, &t)
 			clientResponse <- t
 			// Check if the client who was waiting for the tuple performed a get
 			// or query operation.
@@ -77,12 +95,14 @@ func (ts *TupleSpace) putP(t *Tuple) {
 			}
 		}
 	}
+
 	// No waiting client performing Get matched the tuple. So unlock.
 	ts.muWaitingClients.Unlock()
 
 	// Place lock on tuples[] before adding the new tuple.
 	ts.muTuples.Lock()
 	defer ts.muTuples.Unlock()
+
 	ts.tuples = append(ts.tuples, *t)
 }
 
@@ -230,6 +250,76 @@ func (ts *TupleSpace) removeTupleAt(i int) {
 	ts.tuples = ts.tuples[:ts.Size()-1]
 }
 
+// funcEncode performs encoding of functions in a tuple or a template t.
+func funcEncode(reg *function.Registry, i interface{}) {
+	var fr *function.Registry = nil
+
+	if reg != nil {
+		fr = reg
+	}
+
+	if fr != nil {
+		t := i.(function.Applier)
+
+		// Assume that any string field might contain a reference to a function.
+		// TODO: Encapsulate the enconding of functions better than sending strings.
+		// TODO: A reference type is actually needed in the tuple space, as this will
+		// TODO: solve any issues with the code mobility via dictionary approach.
+		t.Apply(func(field interface{}) interface{} {
+			var val interface{}
+
+			if function.IsFunc(field) {
+				fun := field
+				fr.Register(fun)
+				val = fr.Encode(fun).String()
+			} else {
+				val = field
+			}
+
+			return val
+		})
+	}
+
+	return
+}
+
+// funcDecode performs function decoding on tuples or templates.
+func funcDecode(reg *function.Registry, i interface{}) {
+	var fr *function.Registry = nil
+
+	if reg != nil {
+		fr = reg
+	}
+
+	if fr != nil {
+		t := i.(function.Applier)
+
+		// Assume that any string field might contain a reference to a function.
+		// TODO: The decoding mechanism of functions might convert any tuples that contain namespace strings.
+		// TODO: A reference type is actually needed in the tuple space, as this will
+		// TODO: solve any issues with the code mobility via dictionary approach.
+		t.Apply(func(field interface{}) interface{} {
+			var val interface{}
+
+			if reflect.TypeOf(field) == reflect.TypeOf("") {
+				fun := fr.Decode(function.NewNamespace(field.(string)))
+
+				if fun != nil {
+					val = (*fun)
+				} else {
+					val = field
+				}
+			} else {
+				val = field
+			}
+
+			return val
+		})
+	}
+
+	return
+}
+
 // listen will listen and accept all incoming connections. Once a connection has
 // been established, the connection is passed on to the handler.
 func (ts *TupleSpace) Listen() {
@@ -263,26 +353,6 @@ func (ts *TupleSpace) Listen() {
 // handle will read and decode the message from the connection.
 // The decoded message will be passed on to the respective method.
 func (ts *TupleSpace) handle(conn net.Conn) {
-
-	// BEGIN DEBUG
-	//fmt.Println("DEBUG: Connnection received from ", conn.RemoteAddr(), "...")
-	//time.Sleep(3000 * time.Millisecond)
-
-	//var buf []byte //bytes.Buffer
-	//buf := make([]byte, 0, 4096)
-	//var err error
-	//io.Copy(&buf, conn)
-	//fmt.Println("total size:", buf.Len())
-	//fmt.Println("DEBUG: Extracting stuff...")
-	//buf, err = ioutil.ReadAll(conn)
-	//n, err := conn.Read(buf)
-	//fmt.Println("DEBUG: Stuff extracted...")
-	//fmt.Println(buf, n, err)
-
-	//conn.Close()
-	//return
-	// END DEBUG
-
 	// Make sure the connection closes when method returns.
 	defer conn.Close()
 
@@ -299,45 +369,59 @@ func (ts *TupleSpace) handle(conn net.Conn) {
 	}
 
 	operation := message.GetOperation()
+	fr := ts.funReg
 
 	switch operation {
 	case PutRequest:
 		// Body of message must be tuple.
 		tuple := message.GetBody().(Tuple)
+		funcDecode(fr, &tuple)
 		ts.handlePut(conn, tuple)
 	case PutPRequest:
 		// Body of message must be tuple.
 		tuple := message.GetBody().(Tuple)
+		funcDecode(fr, &tuple)
 		ts.handlePutP(tuple)
 	case GetRequest:
 		// Body of message must be template.
 		template := message.GetBody().(Template)
+		funcDecode(fr, &template)
 		ts.handleGet(conn, template)
 	case GetPRequest:
 		// Body of message must be template.
 		template := message.GetBody().(Template)
+		funcDecode(fr, &template)
 		ts.handleGetP(conn, template)
 	case GetAllRequest:
 		// Body of message must be empty.
 		template := message.GetBody().(Template)
+		funcDecode(fr, &template)
 		ts.handleGetAll(conn, template)
+	case GetAggRequest:
+		// Body of message must be empty.
+		template := message.GetBody().(Template)
+		funcDecode(fr, &template)
+		ts.handleGetAgg(conn, template)
 	case QueryRequest:
 		// Body of message must be template.
 		template := message.GetBody().(Template)
+		funcDecode(fr, &template)
 		ts.handleQuery(conn, template)
 	case QueryPRequest:
 		// Body of message must be template.
 		template := message.GetBody().(Template)
+		funcDecode(fr, &template)
 		ts.handleQueryP(conn, template)
 	case QueryAllRequest:
 		// Body of message must be empty.
 		template := message.GetBody().(Template)
+		funcDecode(fr, &template)
 		ts.handleQueryAll(conn, template)
 	case QueryAggRequest:
-		function := message.Function()
 		// Body of message must be empty.
 		template := message.GetBody().(Template)
-		ts.handleQueryAgg(conn, function, template)
+		funcDecode(fr, &template)
+		ts.handleQueryAgg(conn, template)
 	default:
 		fmt.Println("Can't handle operation. Contact client at ", conn.RemoteAddr())
 		return
@@ -381,6 +465,12 @@ func (ts *TupleSpace) handleGet(conn net.Conn, temp Template) {
 	go ts.get(temp, readChannel)
 	resultTuplePtr := <-readChannel
 
+	fr := (*ts).funReg
+	if fr != nil {
+		defer funcDecode(fr, resultTuplePtr)
+		funcEncode(fr, resultTuplePtr)
+	}
+
 	enc := gob.NewEncoder(conn)
 
 	errEnc := enc.Encode(*resultTuplePtr)
@@ -401,6 +491,12 @@ func (ts *TupleSpace) handleGetP(conn net.Conn, temp Template) {
 	readChannel := make(chan *Tuple)
 	go ts.getP(temp, readChannel)
 	resultTuplePtr := <-readChannel
+
+	fr := (*ts).funReg
+	if fr != nil {
+		defer funcDecode(fr, resultTuplePtr)
+		funcEncode(fr, resultTuplePtr)
+	}
 
 	enc := gob.NewEncoder(conn)
 
@@ -432,12 +528,64 @@ func (ts *TupleSpace) handleGetAll(conn net.Conn, temp Template) {
 	go ts.getAll(temp, readChannel)
 	tupleList := <-readChannel
 
+	fr := (*ts).funReg
+	if fr != nil {
+		for _, t := range tupleList {
+			defer funcDecode(fr, &t)
+			funcEncode(fr, &t)
+		}
+	}
+
 	enc := gob.NewEncoder(conn)
 
 	errEnc := enc.Encode(tupleList)
 
 	if errEnc != nil {
 		panic("handleGetAll")
+	}
+}
+
+// handleGetAgg is a blocking method that will return an aggregated tuple from the tuple
+// space in a list.
+func (ts *TupleSpace) handleGetAgg(conn net.Conn, temp Template) {
+	defer handleRecover()
+
+	fun := temp.GetFieldAt(0)
+
+	fields := make([]interface{}, temp.Length()-1)
+	for i := 1; i < temp.Length(); i += 1 {
+		fields[i-1] = temp.GetFieldAt(i)
+	}
+
+	template := CreateTemplate(fields...)
+
+	readChannel := make(chan []Tuple)
+	go ts.getAll(template, readChannel)
+	tuples := <-readChannel
+
+	var result Tuple
+	if len(tuples) >= 2 {
+		init := tuples[0]
+		aggregate, _ := functools.Reduce(fun, tuples[1:], init)
+		result = aggregate.(Tuple)
+	} else {
+		aggregate := tuples[0]
+		result = aggregate
+
+	}
+
+	fr := (*ts).funReg
+	if fr != nil {
+		defer funcDecode(fr, &result)
+		funcEncode(fr, &result)
+	}
+
+	enc := gob.NewEncoder(conn)
+
+	errEnc := enc.Encode(result)
+
+	if errEnc != nil {
+		panic("handleQueryAgg")
 	}
 }
 
@@ -451,9 +599,17 @@ func (ts *TupleSpace) handleQuery(conn net.Conn, temp Template) {
 	go ts.query(temp, readChannel)
 	resultTuplePtr := <-readChannel
 
+	fr := (*ts).funReg
+	if fr != nil {
+		defer funcDecode(fr, resultTuplePtr)
+		funcEncode(fr, resultTuplePtr)
+	}
+
 	enc := gob.NewEncoder(conn)
 
 	errEnc := enc.Encode(*resultTuplePtr)
+
+	funcDecode(fr, resultTuplePtr)
 
 	if errEnc != nil {
 		panic("handleQuery")
@@ -469,6 +625,12 @@ func (ts *TupleSpace) handleQueryP(conn net.Conn, temp Template) {
 	readChannel := make(chan *Tuple)
 	go ts.queryP(temp, readChannel)
 	resultTuplePtr := <-readChannel
+
+	fr := (*ts).funReg
+	if fr != nil {
+		defer funcDecode(fr, resultTuplePtr)
+		funcEncode(fr, resultTuplePtr)
+	}
 
 	enc := gob.NewEncoder(conn)
 
@@ -489,6 +651,8 @@ func (ts *TupleSpace) handleQueryP(conn net.Conn, temp Template) {
 			panic("handleQueryP")
 		}
 	}
+
+	funcDecode(fr, resultTuplePtr)
 }
 
 // handleQueryAll is a blocking method that will return all tuples from the tuple
@@ -499,6 +663,12 @@ func (ts *TupleSpace) handleQueryAll(conn net.Conn, temp Template) {
 	readChannel := make(chan []Tuple)
 	go ts.queryAll(temp, readChannel)
 	tupleList := <-readChannel
+
+	fr := (*ts).funReg
+	for _, t := range tupleList {
+		defer funcDecode(fr, &t)
+		funcEncode(fr, &t)
+	}
 
 	enc := gob.NewEncoder(conn)
 
@@ -511,21 +681,40 @@ func (ts *TupleSpace) handleQueryAll(conn net.Conn, temp Template) {
 
 // handleQueryAgg is a blocking method that will return an aggregated tuple from the tuple
 // space in a list.
-func (ts *TupleSpace) handleQueryAgg(conn net.Conn, fun interface{}, temp Template) {
+func (ts *TupleSpace) handleQueryAgg(conn net.Conn, temp Template) {
 	defer handleRecover()
 
+	fun := temp.GetFieldAt(0)
+
+	fields := make([]interface{}, temp.Length()-1)
+	for i := 1; i < temp.Length(); i += 1 {
+		fields[i-1] = temp.GetFieldAt(i)
+	}
+
+	template := CreateTemplate(fields...)
+
 	readChannel := make(chan []Tuple)
-	go ts.queryAll(temp, readChannel)
-	// tuples := <-readChannel
-	_ = <-readChannel
+	go ts.queryAll(template, readChannel)
+	tuples := <-readChannel
+
+	var result Tuple
+	if len(tuples) >= 2 {
+		init := tuples[0]
+		aggregate, _ := functools.Reduce(fun, tuples[1:], init)
+		result = aggregate.(Tuple)
+	} else {
+		aggregate := tuples[0]
+		result = aggregate
+
+	}
+
+	fr := (*ts).funReg
+	if fr != nil {
+		defer funcDecode(fr, &result)
+		funcEncode(fr, &result)
+	}
 
 	enc := gob.NewEncoder(conn)
-
-	// TODO: Retrieve function from a function register.
-	init := temp.NewTuple()
-	// aggregate, _ := functools.Reduce(fun, tuples, init)
-	// result = aggregate.(Tuple)
-	result := init
 
 	errEnc := enc.Encode(result)
 

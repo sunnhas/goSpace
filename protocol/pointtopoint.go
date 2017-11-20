@@ -1,21 +1,23 @@
 package protocol
 
 import (
+	"github.com/pspaces/gospace/function"
 	"strings"
 )
 
 // PointToPoint contains information about the receiver, being a user specified
 // name, the IP address and the port number.
 type PointToPoint struct {
-	name    string // Name of receiver.
-	address string // IP address and port number of receiver separated by ":".
+	name    string             // Name of receiver.
+	address string             // IP address and port number of receiver separated by ":".
+	funReg  *function.Registry // Function registry.
 }
 
 // CreatePointToPoint will concatenate the ip and the port to a string to create
 // an address of the receiver. The created PointToPoint is then returned.
-func CreatePointToPoint(name string, ip string, port string) (ptp *PointToPoint) {
+func CreatePointToPoint(name string, ip string, port string, fr *function.Registry) (ptp *PointToPoint) {
 	address := strings.Join([]string{ip, port}, ":")
-	ptp = &PointToPoint{name, address}
+	ptp = &PointToPoint{name, address, fr}
 	return ptp
 }
 
@@ -38,4 +40,9 @@ func (ptp *PointToPoint) GetAddress() string {
 // GetName will return the name of the PointToPoint.
 func (ptp *PointToPoint) GetName() string {
 	return ptp.name
+}
+
+// Registry will return the function registry associated to ptp.
+func (ptp *PointToPoint) GetRegistry() (fr *function.Registry) {
+	return ptp.funReg
 }

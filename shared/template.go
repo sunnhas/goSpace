@@ -2,12 +2,14 @@ package shared
 
 import (
 	"fmt"
+	"github.com/pspaces/gospace/function"
 	"reflect"
 	"strings"
 )
 
 // Intertemplate an interface for manipulating templates.
 type Intertemplate interface {
+	function.Applier
 	Length() int
 	GetFieldAt(i int) interface{}
 	NewTuple() Tuple
@@ -31,6 +33,8 @@ func CreateTemplate(fields ...interface{}) Template {
 		if reflect.TypeOf(value).Kind() == reflect.Ptr {
 			// Encapsulate the parameter with a TypeField.
 			tempfields[i] = CreateTypeField(reflect.ValueOf(value).Elem().Type())
+		} else if function.IsFunc(value) && reflect.TypeOf(value).Kind() == reflect.Interface {
+			tempfields[i] = CreateTypeField(function.Type(value))
 		}
 	}
 
@@ -47,6 +51,18 @@ func (tp *Template) Length() int {
 // GetFieldAt returns the i'th field of the template.
 func (tp *Template) GetFieldAt(i int) interface{} {
 	return (*tp).Fields[i]
+}
+
+// setFieldAt sets the i'th field of the template to the value of val.
+func (tp *Template) setFieldAt(i int, val interface{}) {
+	(*tp).Fields[i] = val
+}
+
+// Apply iterates through the template tp and applies the function fun to each field.
+func (tp *Template) Apply(fun func(field interface{}) interface{}) {
+	for i := 0; i < tp.Length(); i += 1 {
+		tp.setFieldAt(i, fun(tp.GetFieldAt(i)))
+	}
 }
 
 // NewTuple returns a new tuple t from the template.

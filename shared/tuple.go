@@ -2,12 +2,14 @@ package shared
 
 import (
 	"fmt"
+	"github.com/pspaces/gospace/function"
 	"reflect"
 	"strings"
 )
 
 // Intertuple defines an interface for manipulating tuples.
 type Intertuple interface {
+	function.Applier
 	Length() int
 	GetFieldAt(i int) interface{}
 	SetFieldAt(i int, val interface{})
@@ -61,6 +63,13 @@ func (t *Tuple) SetFieldAt(i int, val interface{}) {
 	(*t).Fields[i] = val
 }
 
+// Apply iterates through the tuple t and applies the function fun to each field.
+func (t *Tuple) Apply(fun func(field interface{}) interface{}) {
+	for i := 0; i < t.Length(); i += 1 {
+		t.SetFieldAt(i, fun(t.GetFieldAt(i)))
+	}
+}
+
 // Match pattern matches the tuple against the template tp.
 // Match discriminates between encapsulated formal fields and actual fields.
 // Match returns true if the template matches the tuple, and false otherwise.
@@ -81,6 +90,12 @@ func (t *Tuple) Match(tp Template) bool {
 			if reflect.TypeOf(tf) != tpf.(TypeField).GetType() {
 				return false
 			}
+		} else if function.IsFunc(tf) && function.IsFunc(tpf) {
+			// We can do better. Functions are not being moved or rewritten while one is executing, no?
+			// If a function has a static address, and one has two functions with the same static address,
+			// then the functionality they provide must be equal. Then we shall match and accept any consequences of
+			// inlining and using addresses of anonymous functions.
+			return (function.FuncName(tf) == function.FuncName(tpf)) && (function.Signature(tf) == function.Signature(tpf))
 		} else if !reflect.DeepEqual(tf, tpf) {
 			return false
 		}
@@ -114,6 +129,8 @@ func (t Tuple) String() string {
 		if field != nil {
 			if reflect.TypeOf(field).Kind() == reflect.String {
 				strs[i] = fmt.Sprintf("%s%s%s", "\"", field, "\"")
+			} else if function.IsFunc(field) {
+				strs[i] = fmt.Sprintf("%s %s", function.FuncName(field), function.Signature(field))
 			} else {
 				strs[i] = fmt.Sprintf("%v", field)
 			}

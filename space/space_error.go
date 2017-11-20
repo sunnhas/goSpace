@@ -2,7 +2,7 @@ package space
 
 import (
 	"fmt"
-	"github.com/pspaces/gospace/shared"
+	"github.com/pspaces/gospace/function"
 	"go/build"
 	"reflect"
 	"strings"
@@ -11,8 +11,8 @@ import (
 // SpaceError represents an internal error type used when printing error messages.
 type SpaceError struct {
 	Msg     string
-	LibInfo shared.CallerInfo
-	UsrInfo shared.CallerInfo
+	LibInfo function.CallerInfo
+	UsrInfo function.CallerInfo
 	Sid     string
 	Val     string
 	Sop     bool
@@ -46,11 +46,11 @@ func NewSpaceError(spc *Space, value interface{}, state interface{}) error {
 	var msg, sid, val string
 	var err error
 	var sop bool
-	var libInfo, usrInfo shared.CallerInfo
+	var libInfo, usrInfo function.CallerInfo
 	var status interface{}
 
-	libInfo = shared.ExtractCallerInfo(libCallDepth)
-	usrInfo = shared.ExtractCallerInfo(usrCallDepth)
+	libInfo = function.ExtractCallerInfo(libCallDepth)
+	usrInfo = function.ExtractCallerInfo(usrCallDepth)
 
 	if spc == nil {
 		sid = "nil"
