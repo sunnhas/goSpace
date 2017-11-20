@@ -389,12 +389,8 @@ func QueryAgg(ptp PointToPoint, aggFunc interface{}, tempFields ...interface{}) 
 
 func getAggAndQueryAgg(ptp PointToPoint, operation string, aggFunc interface{}, tempFields ...interface{}) (Tuple, bool) {
 	fields := make([]interface{}, len(tempFields)+1)
-	copy(fields[0:1], aggFunc.([]interface{}))
+	fields[0] = aggFunc
 	copy(fields[1:], tempFields)
-
-	/*for i := 0; i < len(tempFields); i += 1 {
-		fields[i+1] = tempFields[i]
-	}*/
 
 	t := CreateTemplate(fields...)
 	conn, errDial := establishConnection(ptp)

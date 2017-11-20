@@ -392,7 +392,7 @@ func (s *Space) GetAgg(f interface{}, t ...interface{}) (tp Tuple, e error) {
 	var status interface{} = nil
 
 	if s != nil {
-		rawres, rawerr := (*s).RawGetAgg([]interface{}{f}, t...)
+		rawres, rawerr := (*s).RawGetAgg(f, t...)
 		result = rawres.(Tuple)
 		status = rawerr
 	} else {

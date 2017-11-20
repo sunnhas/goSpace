@@ -81,7 +81,7 @@ func (ts *TupleSpace) putP(t *Tuple) {
 			// If this is reached, the tuple matched the template and the
 			// tuple is send to the response channel of the waiting client.
 			clientResponse := waitingClient.GetResponseChan()
-			funcEncode(fr, &t)
+			funcEncode(fr, t)
 			clientResponse <- t
 			// Check if the client who was waiting for the tuple performed a get
 			// or query operation.
