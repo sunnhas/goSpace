@@ -100,7 +100,7 @@ func Put(ptp PointToPoint, tupleFields ...interface{}) bool {
 	}
 
 	// Make sure the connection closes when method returns.
-	defer conn.Close()
+	defer (*conn).Close()
 
 	// Perform function encoding.
 	funcEncode(ptp.GetRegistry(), &t)
@@ -143,7 +143,7 @@ func PutP(ptp PointToPoint, tupleFields ...interface{}) bool {
 	}
 
 	// Make sure the connection closes when method returns.
-	defer conn.Close()
+	defer (*conn).Close()
 
 	// Perform function encoding.
 	funcEncode(ptp.GetRegistry(), &t)
@@ -186,7 +186,7 @@ func getAndQuery(ptp PointToPoint, operation string, tempFields ...interface{}) 
 	}
 
 	// Make sure the connection closes when method returns.
-	defer conn.Close()
+	defer (*conn).Close()
 
 	// Perform function encoding.
 	funcEncode(ptp.GetRegistry(), &t)
@@ -243,7 +243,7 @@ func getPAndQueryP(ptp PointToPoint, operation string, tempFields ...interface{}
 	}
 
 	// Make sure the connection closes when method returns.
-	defer conn.Close()
+	defer (*conn).Close()
 
 	// Perform function encoding.
 	funcEncode(ptp.GetRegistry(), &t)
@@ -304,7 +304,7 @@ func getAllAndQueryAll(ptp PointToPoint, operation string, tempFields ...interfa
 	}
 
 	// Make sure the connection closes when method returns.
-	defer conn.Close()
+	defer (*conn).Close()
 
 	// Perform function encoding.
 	funcEncode(ptp.GetRegistry(), &t)
@@ -402,7 +402,7 @@ func getAggAndQueryAgg(ptp PointToPoint, operation string, aggFunc interface{}, 
 	}
 
 	// Make sure the connection closes when method returns.
-	defer conn.Close()
+	defer (*conn).Close()
 
 	// Perform function encoding.
 	funcEncode(ptp.GetRegistry(), &t)
@@ -432,18 +432,18 @@ func getAggAndQueryAgg(ptp PointToPoint, operation string, aggFunc interface{}, 
 
 // establishConnection will establish a connection to the PointToPoint ptp and
 // return the Conn and error.
-func establishConnection(ptp PointToPoint) (net.Conn, error) {
+func establishConnection(ptp PointToPoint) (*net.Conn, error) {
 	addr := ptp.GetAddress()
 
 	// Establish a connection to the PointToPoint using TCP to ensure reliability.
 	conn, errDial := net.Dial("tcp4", addr)
 
-	return conn, errDial
+	return &conn, errDial
 }
 
-func sendMessage(conn net.Conn, operation string, t interface{}) error {
+func sendMessage(conn *net.Conn, operation string, t interface{}) error {
 	// Create encoder to the connection.
-	enc := gob.NewEncoder(conn)
+	enc := gob.NewEncoder(*conn)
 
 	gob.Register(t)
 	// Registrer typefield to match types.
@@ -457,9 +457,9 @@ func sendMessage(conn net.Conn, operation string, t interface{}) error {
 	return errEnc
 }
 
-func receiveMessageBool(conn net.Conn) (bool, error) {
+func receiveMessageBool(conn *net.Conn) (bool, error) {
 	// Create decoder to the connection to receive the response.
-	dec := gob.NewDecoder(conn)
+	dec := gob.NewDecoder(*conn)
 
 	// Read the response from the connection through the decoder.
 	var b bool
@@ -468,9 +468,9 @@ func receiveMessageBool(conn net.Conn) (bool, error) {
 	return b, errDec
 }
 
-func receiveMessageTuple(conn net.Conn) (Tuple, error) {
+func receiveMessageTuple(conn *net.Conn) (Tuple, error) {
 	// Create decoder to the connection to receive the response.
-	dec := gob.NewDecoder(conn)
+	dec := gob.NewDecoder(*conn)
 
 	// Read the response from the connection through the decoder.
 	var tuple Tuple
@@ -479,9 +479,9 @@ func receiveMessageTuple(conn net.Conn) (Tuple, error) {
 	return tuple, errDec
 }
 
-func receiveMessageBoolAndTuple(conn net.Conn) (bool, Tuple, error) {
+func receiveMessageBoolAndTuple(conn *net.Conn) (bool, Tuple, error) {
 	// Create decoder to the connection to receive the response.
-	dec := gob.NewDecoder(conn)
+	dec := gob.NewDecoder(*conn)
 
 	// Read the response from the connection through the decoder.
 	var result []interface{}
@@ -494,9 +494,9 @@ func receiveMessageBoolAndTuple(conn net.Conn) (bool, Tuple, error) {
 	return b, tuple, errDec
 }
 
-func receiveMessageTupleList(conn net.Conn) ([]Tuple, error) {
+func receiveMessageTupleList(conn *net.Conn) ([]Tuple, error) {
 	// Create decoder to the connection to receive the response.
-	dec := gob.NewDecoder(conn)
+	dec := gob.NewDecoder(*conn)
 
 	// Read the response from the connection through the decoder.
 	var tuples []Tuple

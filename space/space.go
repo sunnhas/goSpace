@@ -427,7 +427,7 @@ func (s *Space) QueryAgg(f interface{}, t ...interface{}) (tp Tuple, e error) {
 	var status interface{} = nil
 
 	if s != nil {
-		rawres, rawerr := (*s).RawQueryAgg([]interface{}{f}, t...)
+		rawres, rawerr := (*s).RawQueryAgg(f, t...)
 		result = rawres.(Tuple)
 		status = rawerr
 	} else {

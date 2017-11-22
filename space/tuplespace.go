@@ -268,7 +268,7 @@ func funcEncode(reg *function.Registry, i interface{}) {
 		t.Apply(func(field interface{}) interface{} {
 			var val interface{}
 
-			if function.IsFunc(field) {
+			if field != nil && function.IsFunc(field) {
 				fun := field
 				fr.Register(fun)
 				val = fr.Encode(fun).String()
@@ -301,7 +301,7 @@ func funcDecode(reg *function.Registry, i interface{}) {
 		t.Apply(func(field interface{}) interface{} {
 			var val interface{}
 
-			if reflect.TypeOf(field) == reflect.TypeOf("") {
+			if field != nil && reflect.TypeOf(field) == reflect.TypeOf("") {
 				fun := fr.Decode(function.NewNamespace(field.(string)))
 
 				if fun != nil {
@@ -466,7 +466,7 @@ func (ts *TupleSpace) handleGet(conn net.Conn, temp Template) {
 	resultTuplePtr := <-readChannel
 
 	fr := (*ts).funReg
-	if fr != nil {
+	if fr != nil && resultTuplePtr != nil {
 		defer funcDecode(fr, resultTuplePtr)
 		funcEncode(fr, resultTuplePtr)
 	}
@@ -493,7 +493,7 @@ func (ts *TupleSpace) handleGetP(conn net.Conn, temp Template) {
 	resultTuplePtr := <-readChannel
 
 	fr := (*ts).funReg
-	if fr != nil {
+	if fr != nil && resultTuplePtr != nil {
 		defer funcDecode(fr, resultTuplePtr)
 		funcEncode(fr, resultTuplePtr)
 	}
@@ -568,10 +568,10 @@ func (ts *TupleSpace) handleGetAgg(conn net.Conn, temp Template) {
 		init := tuples[0]
 		aggregate, _ := functools.Reduce(fun, tuples[1:], init)
 		result = aggregate.(Tuple)
+	} else if len(tuples) == 1 {
+		result = tuples[0]
 	} else {
-		aggregate := tuples[0]
-		result = aggregate
-
+		result = Tuple{}
 	}
 
 	fr := (*ts).funReg
@@ -600,7 +600,7 @@ func (ts *TupleSpace) handleQuery(conn net.Conn, temp Template) {
 	resultTuplePtr := <-readChannel
 
 	fr := (*ts).funReg
-	if fr != nil {
+	if fr != nil && resultTuplePtr != nil {
 		defer funcDecode(fr, resultTuplePtr)
 		funcEncode(fr, resultTuplePtr)
 	}
@@ -627,7 +627,7 @@ func (ts *TupleSpace) handleQueryP(conn net.Conn, temp Template) {
 	resultTuplePtr := <-readChannel
 
 	fr := (*ts).funReg
-	if fr != nil {
+	if fr != nil && resultTuplePtr != nil {
 		defer funcDecode(fr, resultTuplePtr)
 		funcEncode(fr, resultTuplePtr)
 	}
@@ -665,9 +665,11 @@ func (ts *TupleSpace) handleQueryAll(conn net.Conn, temp Template) {
 	tupleList := <-readChannel
 
 	fr := (*ts).funReg
-	for _, t := range tupleList {
-		defer funcDecode(fr, &t)
-		funcEncode(fr, &t)
+	if fr != nil {
+		for _, t := range tupleList {
+			defer funcDecode(fr, &t)
+			funcEncode(fr, &t)
+		}
 	}
 
 	enc := gob.NewEncoder(conn)
@@ -702,10 +704,10 @@ func (ts *TupleSpace) handleQueryAgg(conn net.Conn, temp Template) {
 		init := tuples[0]
 		aggregate, _ := functools.Reduce(fun, tuples[1:], init)
 		result = aggregate.(Tuple)
+	} else if len(tuples) == 1 {
+		result = tuples[0]
 	} else {
-		aggregate := tuples[0]
-		result = aggregate
-
+		result = Tuple{}
 	}
 
 	fr := (*ts).funReg
