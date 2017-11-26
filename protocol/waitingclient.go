@@ -33,7 +33,11 @@ func CreateWaitingClient(temp Template, tupleChan chan<- *Tuple, remove bool) Wa
 
 // GetTemplate will return the template of the waiting client.
 func (waitingClient *WaitingClient) GetTemplate() Template {
-	return waitingClient.template
+	// Make a copy of the template.
+	fc := make([]interface{}, len(waitingClient.template.Fields))
+	copy(fc, waitingClient.template.Fields)
+	tp := CreateTemplate(fc...)
+	return tp
 }
 
 // GetResponseChan will return the response channel of the waiting client.

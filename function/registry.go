@@ -357,6 +357,8 @@ func (lb LanguageBinding) String() (s string) {
 	return s
 }
 
+var GlobalRegistry *Registry = nil
+
 // NewFunctionRegistry creates a function registry.
 func NewRegistry() (fr Registry) {
 	nsd := NewNamespaceDictionary()

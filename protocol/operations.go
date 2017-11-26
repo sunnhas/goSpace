@@ -25,4 +25,6 @@ const (
 	GetAggResponse   = "GETAGG_RESPONSE"
 	PutAggRequest    = "PUTAGG_REQUEST"
 	PutAggResponse   = "PUTAGG_RESPONSE"
+	SizeRequest      = "SIZE_REQUEST"
+	SizeResponse     = "SIZE_RESPONSE"
 )

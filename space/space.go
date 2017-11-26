@@ -71,10 +71,37 @@ func NewRemoteSpace(url string) (rs Space) {
 	return rs
 }
 
-// Size returns the size of the space.
-func (s *Space) Size() (sz int) {
-	sz = (*s.ts).Size()
-	return sz
+// Size retrieves the size of the space at this instant.
+// Size returns the space size or -1 if it was not possible to determine the size at this instant.
+// Error e contains a structure adhering to the error interface if the operation fails, and nil if no error occured.
+func (s *Space) Size() (sz int, e error) {
+	var result int
+	var status interface{} = nil
+
+	if s != nil {
+		rawres, rawerr := (*s).RawSize()
+		result = rawres.(int)
+		status = rawerr
+	} else {
+		result = -1
+	}
+
+	e = NewSpaceError(s, -1, status)
+
+	if e == nil {
+		sz = result
+	} else {
+		sz = -1
+	}
+
+	return sz, e
+}
+
+// RawSize retrieves the size of space s at this instant without any error checking.
+// RawSize returns the implementation result sz and error state e.
+func (s *Space) RawSize() (sz interface{}, e interface{}) {
+	sz, e = Size(*s.p)
+	return sz, e
 }
 
 // Put performs a blocking placement a tuple t into space s.
