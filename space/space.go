@@ -1,6 +1,7 @@
 package space
 
 import (
+	. "github.com/pspaces/gospace/policy"
 	. "github.com/pspaces/gospace/protocol"
 	. "github.com/pspaces/gospace/shared"
 	"reflect"
@@ -58,8 +59,8 @@ type Space struct {
 }
 
 // NewSpace creates an empty space s with the specified URL.
-func NewSpace(url string) (s Space) {
-	p, ts := NewSpaceAlt(url)
+func NewSpace(url string, cp ...*ComposablePolicy) (s Space) {
+	p, ts := NewSpaceAlt(url, cp...)
 	s = Space{url, ts, p}
 	return s
 }

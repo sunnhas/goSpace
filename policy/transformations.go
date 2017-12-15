@@ -16,7 +16,7 @@ func NewTransformations(tr ...*Transformation) (trs *Transformations) {
 		trc := make([]Transformation, len(tr))
 
 		// Make a copy of the transformations.
-		for i, _ := range tr {
+		for i := range tr {
 			if tr[i] != nil {
 				trans := tr[i]
 				function := trans.Function()
@@ -32,4 +32,37 @@ func NewTransformations(tr ...*Transformation) (trs *Transformations) {
 	}
 
 	return trs
+}
+
+// Template returns a transformation that can be applied to template entities.
+func (trs *Transformations) Template() (trans *Transformation) {
+	trans = nil
+
+	if trs != nil {
+		trans = &trs.Tmpl
+	}
+
+	return trans
+}
+
+// Match returns an transformation that can be applied to matched entities.
+func (trs *Transformations) Match() (match *Transformation) {
+	match = nil
+
+	if trs != nil {
+		match = &trs.Mtch
+	}
+
+	return match
+}
+
+// Result returns an transformation that can be applied to result entities.
+func (trs *Transformations) Result() (rslt *Transformation) {
+	rslt = nil
+
+	if trs != nil {
+		rslt = &trs.Rslt
+	}
+
+	return rslt
 }

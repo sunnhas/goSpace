@@ -12,3 +12,21 @@ func NewAggregationRule(a Action, trs Transformations) (ar AggregationRule) {
 	ar = AggregationRule{Object: a, Subject: trs}
 	return ar
 }
+
+// Action returns an action a associated to the aggregation rule ar.
+func (ar *AggregationRule) Action() (a Action) {
+	if ar != nil {
+		a = ar.Object
+	}
+
+	return a
+}
+
+// Transformations returns the transformations that are associated to the aggregation rule ar.
+func (ar *AggregationRule) Transformations() (tr Transformations) {
+	if ar != nil {
+		tr = ar.Subject
+	}
+
+	return tr
+}

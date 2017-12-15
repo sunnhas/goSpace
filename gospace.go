@@ -6,6 +6,8 @@ import (
 	spc "github.com/pspaces/gospace/space"
 )
 
+type Intertuple = shr.Intertuple
+
 type Space = spc.Space
 type Tuple = shr.Tuple
 type Template = shr.Template
@@ -17,15 +19,16 @@ type LabelledTuple = shr.LabelledTuple
 type Action = pol.Action
 type AggregationRule = pol.AggregationRule
 type AggregationPolicy = pol.AggregationPolicy
+type ComposablePolicy = pol.ComposablePolicy
 type Transformation = pol.Transformation
 type Transformations = pol.Transformations
 
 // NewSpace creates a structure that represents a space.
-func NewSpace(name string) Space {
-	return spc.NewSpace(name)
+func NewSpace(name string, policy ...*ComposablePolicy) Space {
+	return spc.NewSpace(name, policy...)
 }
 
-// NewSpace creates a structure that represents a remote space.
+// NewRemoteSpace creates a structure that represents a remote space.
 func NewRemoteSpace(name string) Space {
 	return spc.NewRemoteSpace(name)
 }
@@ -57,8 +60,8 @@ type TemplateFrame interface {
 }
 
 // NewLabel creates a structure that represents a label.
-func NewLabel(id string, v ...interface{}) Label {
-	return shr.NewLabel(id, v...)
+func NewLabel(id string) Label {
+	return shr.NewLabel(id)
 }
 
 // NewLabels creates a structure that represents a collection of labels.
@@ -84,6 +87,11 @@ func NewAggregationRule(a Action, trs Transformations) AggregationRule {
 // NewAggregationPolicy creates a structure that represents an aggregation policy.
 func NewAggregationPolicy(l Label, r AggregationRule) AggregationPolicy {
 	return pol.NewAggregationPolicy(l, r)
+}
+
+// NewComposablePolicy creates a structure that represents a composable policy.
+func NewComposablePolicy(ars ...AggregationPolicy) *ComposablePolicy {
+	return pol.NewComposablePolicy(ars...)
 }
 
 // NewTransformation creates a structure for representing a transformation that can be applied to an action.

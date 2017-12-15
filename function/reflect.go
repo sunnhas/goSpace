@@ -118,12 +118,12 @@ func Signature(fun interface{}, name ...string) (sgn string) {
 	vsize := 0
 
 	if fn.Type().IsVariadic() {
-		vsize += 1
+		vsize++
 	}
 
 	istrs := make([]string, isize)
 
-	for i := 0; i < isize; i += 1 {
+	for i := 0; i < isize; i++ {
 		t := fn.Type().In(i)
 		istrs[i] = strings.Replace(t.String(), " ", "", 1)
 
@@ -140,7 +140,7 @@ func Signature(fun interface{}, name ...string) (sgn string) {
 
 	ostrs := make([]string, osize)
 
-	for j := 0; j < osize; j += 1 {
+	for j := 0; j < osize; j++ {
 		t := fn.Type().Out(j)
 		ostrs[j] = strings.Replace(t.String(), " ", "", 1)
 	}

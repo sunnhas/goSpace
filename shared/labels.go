@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -14,7 +15,7 @@ func NewLabels(ll ...Label) (ls Labels) {
 	ls = make(Labels)
 
 	for _, l := range ll {
-		ls.Add(NewLabel((&l).Id(), (&l).Value()))
+		ls.Add(l.DeepCopy())
 	}
 
 	return ls
@@ -46,6 +47,37 @@ func (ls *Labels) Retrieve(id string) (l *Label) {
 	return l
 }
 
+// Intersect returns true if both label sets ls and lm intersect, and false otherwise.
+// Intersect returns an intersected label set li if ls and lm intersect, and nil otherwise.
+func (ls *Labels) Intersect(lm *Labels) (li *Labels, e bool) {
+	e = ls != nil && lm != nil
+
+	if e {
+		labelling := ls.Labelling()
+		intersect := make([]Label, 0, len(labelling))
+		i := 0
+		for _, id := range labelling {
+			la := ls.Retrieve(id)
+			lb := lm.Retrieve(id)
+			if lb != nil {
+				e = la.Equal(lb)
+				if e {
+					intersect = append(intersect, NewLabel(id))
+					i++
+				}
+			}
+		}
+
+		e = len(intersect) > 0
+		if e {
+			lbls := NewLabels(intersect[:i]...)
+			li = &lbls
+		}
+	}
+
+	return li, e
+}
+
 // Delete deletes a label l from label set ls.
 // Delete returns true if the label has been deleted, and false otherwise.
 func (ls *Labels) Delete(id string) (b bool) {
@@ -61,26 +93,42 @@ func (ls *Labels) Delete(id string) (b bool) {
 
 // Labelling returns the labels identifiers present in the label set ls.
 func (ls *Labels) Labelling() (labelling []string) {
-	labelling = make([]string, len(*ls))
+	if ls != nil {
+		labelling = make([]string, len(*ls))
 
-	i := 0
-	for k, _ := range *ls {
-		labelling[i] = k
-		i += 1
+		i := 0
+		for k := range *ls {
+			labelling[i] = k
+			i++
+		}
 	}
 
 	return labelling
 }
 
+// Set returns the set of all labels in ls.
+func (ls *Labels) Set() (set []Label) {
+	if ls != nil {
+		set = make([]Label, 0, len(*ls))
+
+		for _, v := range *ls {
+			set = append(set, v)
+		}
+	}
+
+	return set
+}
+
 // String returns a print friendly representation of the labels set ls.
 func (ls Labels) String() (s string) {
-	ms := make([]string, len(ls))
+	ms := make([]string, len((&ls).Labelling()))
 
-	i := 0
-	for _, v := range ls {
-		ms[i] = fmt.Sprintf("%v", v)
-		i += 1
+	for i, lid := range (&ls).Labelling() {
+		l := (&ls).Retrieve(lid)
+		ms[i] = fmt.Sprintf("%s", *l)
 	}
+
+	sort.Strings(ms)
 
 	s = fmt.Sprintf("{%s}", strings.Join(ms, ", "))
 

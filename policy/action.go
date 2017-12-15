@@ -1,48 +1,124 @@
 package policy
 
 import (
+	"fmt"
 	"github.com/pspaces/gospace/function"
+	"github.com/pspaces/gospace/shared"
+	"math"
+	"reflect"
+	"strings"
 )
 
 // Action is a structure defining an operation.
 type Action struct {
 	Oper   string
-	Sign   string
 	Func   interface{}
 	Params []interface{}
+	Sign   ActionSignature
+}
+
+// ActionSignature is a structure for storing signature information for faster matching.
+type ActionSignature struct {
+	Oper   shared.Signature
+	Func   shared.Signature
+	Params shared.Signature
 }
 
 // NewAction creates an action given a function and optionally a parameter list params.
 func NewAction(fun interface{}, params ...interface{}) (a *Action) {
 	operator := function.FuncName(fun)
 
-	signature := function.Signature(fun)
+	sign := ActionSignature{
+		Oper:   shared.NewSignature(1, operator),
+		Func:   shared.NewSignature(1, fun),
+		Params: shared.NewSignature(math.MaxUint16, params),
+	}
 
-	a = &Action{Oper: operator, Sign: signature, Func: fun, Params: params}
+	a = &Action{Oper: operator, Func: fun, Params: params, Sign: sign}
 
 	return a
 }
 
-// Name returns the operator name s of the action a.
+// Equal returns true if both action a and action b are equivalent, and false otherwise.
+func (a *Action) Equal(b *Action) (e bool) {
+	e = false
+
+	if a == nil && a == b {
+		e = true
+	} else if a != nil && b != nil {
+		op := a.Operator() == b.Operator()
+
+		signature := false
+		aSign := a.Signature()
+		bSign := b.Signature()
+		if op {
+			signature = aSign.Oper == bSign.Oper && aSign.Func == bSign.Func
+		}
+
+		fun := false
+		if signature {
+			fun = reflect.ValueOf(a.Function()).Pointer() == reflect.ValueOf(b.Function()).Pointer()
+		}
+
+		params := len(a.Parameters()) == len(b.Parameters())
+		if fun && params {
+			if aSign.Params != bSign.Params {
+				ta := shared.CreateTemplate(a.Parameters()...)
+				tb := shared.CreateTemplate(b.Parameters()...)
+				params = params && (&ta).Equal(&tb)
+			}
+		}
+
+		e = op && signature && fun && params
+	}
+
+	return e
+}
+
+// Operator returns the operator name s of the action a.
 func (a *Action) Operator() (s string) {
-	s = (*a).Oper
+	if a != nil {
+		s = (*a).Oper
+	}
+
 	return s
 }
 
 // Function returns the function f associated to the action a.
 func (a *Action) Function() (f interface{}) {
-	f = (*a).Func
+	if a != nil {
+		f = (*a).Func
+	}
+
 	return f
 }
 
 // Parameters returns the actual paramaters p which optionally can be applied to action a.
 func (a *Action) Parameters() (p []interface{}) {
-	p = (*a).Params
+	if a != nil {
+		p = (*a).Params
+	}
+
 	return p
 }
 
-// Signature returns the function signature s belonging to an action a.
-func (a *Action) Signature() (s string) {
-	s = (*a).Sign
+// Signature returns the signature s belonging to an action a.
+func (a *Action) Signature() (s ActionSignature) {
+	if a != nil {
+		s = (*a).Sign
+	}
+
+	return s
+}
+
+// String returns print friendly representation of an action a.
+func (a Action) String() (s string) {
+	s = fmt.Sprintf("{\n\t%v,\n\t%v,\n\t%v,\n\t%v,\n}", a.Oper, a.Func, a.Params, strings.Replace(a.Sign.String(), "\n", "\n\t", -1))
+	return s
+}
+
+// String returns print friendly representation of an action signature as.
+func (as ActionSignature) String() (s string) {
+	s = fmt.Sprintf("{\n\t%v,\n\t%v,\n\t%v,\n}", as.Oper, as.Func, as.Params)
 	return s
 }

@@ -26,7 +26,7 @@ func NewLabelledTuple(fields ...interface{}) (lt LabelledTuple) {
 			lblsc := make(Labels)
 			for _, v := range lbls.Labelling() {
 				lbl := lbls.Retrieve(v)
-				lblsc.Add(NewLabel(lbl.Id(), lbl.Value()))
+				lblsc.Add(NewLabel(lbl.Id()))
 			}
 			lbls = lblsc
 		}
@@ -43,51 +43,96 @@ func NewLabelledTuple(fields ...interface{}) (lt LabelledTuple) {
 }
 
 // Length returns the amount of fields of the tuple.
-func (lt *LabelledTuple) Length() int {
-	return len((*lt).Fields) - 1
+func (lt *LabelledTuple) Length() (sz int) {
+	sz = -1
+
+	if lt != nil {
+		sz = len((*lt).Flds) - 1
+	}
+
+	return
+}
+
+// Fields returns the fields of the tuple.
+func (lt *LabelledTuple) Fields() (flds []interface{}) {
+	if lt != nil {
+		if lt.Length() >= 2 {
+			flds = (*lt).Flds[1:]
+		}
+	}
+
+	return flds
 }
 
 // GetFieldAt returns the i'th field of the tuple.
-func (lt *LabelledTuple) GetFieldAt(i int) interface{} {
-	return (*lt).Fields[i+1]
+func (lt *LabelledTuple) GetFieldAt(i int) (fld interface{}) {
+	if lt != nil && i >= 0 && i < lt.Length() {
+		fld = (*lt).Flds[i+1]
+	}
+
+	return
 }
 
 // SetFieldAt sets the i'th field of the tuple to the value of val.
-func (lt *LabelledTuple) SetFieldAt(i int, val interface{}) {
-	(*lt).Fields[i+1] = val
+func (lt *LabelledTuple) SetFieldAt(i int, val interface{}) (b bool) {
+	if lt != nil && i >= 0 && i < lt.Length() {
+		(*lt).Flds[i+1] = val
+		b = true
+	}
+
+	return b
+}
+
+// Apply iterates through the labelled tuple t and applies the function fun to each field.
+// Apply returns true function fun could be applied to all the fields, and false otherwise.
+func (lt *LabelledTuple) Apply(fun func(field interface{}) interface{}) (b bool) {
+	b = false
+
+	if lt != nil {
+		b = true
+		for i := 0; i < lt.Length(); i++ {
+			lt.SetFieldAt(i, fun(lt.GetFieldAt(i)))
+		}
+	}
+
+	return b
 }
 
 // Labels returns the label set belonging to the labelled tuple.
 func (lt *LabelledTuple) Labels() (ls Labels) {
-	return (*lt).Fields[0].(Labels)
+	return (*lt).Flds[0].(Labels)
+}
+
+// Tuple returns a tuple without the label.
+func (lt *LabelledTuple) Tuple() (t Tuple) {
+	t = CreateTuple((*lt).Flds[1:]...)
+	return t
+}
+
+// MatchLabels matches a labelled tuples t labels against labels ls.
+func (lt *LabelledTuple) MatchLabels(ls Labels) (mls *Labels, b bool) {
+	b = lt != nil
+
+	if b {
+		ltls := lt.Labels()
+		mls, b = ltls.Intersect(&ls)
+	}
+
+	return mls, b
 }
 
 // MatchTemplate pattern matches labelled tuple t against the template tp.
 // MatchTemplate discriminates between encapsulated formal fields and actual fields.
 // MatchTemplate returns true if the template matches the labelled tuple and false otherwise.
-func (lt *LabelledTuple) MatchTemplate(tp Template) bool {
-	if (*lt).Length() != tp.Length() {
-		return false
-	} else if (*lt).Length() == 0 && tp.Length() == 0 {
-		return true
+func (lt *LabelledTuple) MatchTemplate(tp Template) (b bool) {
+	b = lt != nil && lt.Length() == (&tp).Length()
+
+	if b {
+		t := lt.Tuple()
+		b = (&t).Match(tp)
 	}
 
-	// Run through corresponding fields of tuple and template to see if they are
-	// matching.
-	for i := 0; i < tp.Length(); i++ {
-		tf := (*lt).GetFieldAt(i)
-		tpf := tp.GetFieldAt(i)
-		// Check if the field of the template is an encapsulated formal or actual field.
-		if reflect.TypeOf(tpf) == reflect.TypeOf(TypeField{}) {
-			if reflect.TypeOf(tf) != tpf.(TypeField).GetType() {
-				return false
-			}
-		} else if !reflect.DeepEqual(tf, tpf) {
-			return false
-		}
-	}
-
-	return true
+	return b
 }
 
 // ParenthesisType returns a pair of strings that encapsulates labelled tuple t.
@@ -110,7 +155,7 @@ func (lt LabelledTuple) String() (s string) {
 
 	strs := make([]string, lt.Length())
 
-	for i, _ := range strs {
+	for i := range strs {
 		field := lt.GetFieldAt(i)
 
 		if field != nil {

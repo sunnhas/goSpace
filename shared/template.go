@@ -11,14 +11,15 @@ import (
 type Intertemplate interface {
 	function.Applier
 	Length() int
+	Fields() []interface{}
 	GetFieldAt(i int) interface{}
 	NewTuple() Tuple
 }
 
 // Template structure used for matching against tuples.
-// Templates is, in princple, a tuple with additional attributes used for pattern matching.
+// Template is a tuple with type information used for pattern matching.
 type Template struct {
-	Fields []interface{}
+	Flds []interface{}
 }
 
 // CreateTemplate creates a template from the variadic fields provided.
@@ -43,35 +44,135 @@ func CreateTemplate(fields ...interface{}) Template {
 	return template
 }
 
-// Length returns the amount of fields of the template.
-func (tp *Template) Length() int {
-	return len((*tp).Fields)
+// Equal returns true if both templates tp and tq are strictly equal, and false otherwise.
+func (tp *Template) Equal(tq *Template) (e bool) {
+	e = false
+
+	if tp == nil && tp == tq {
+		e = true
+	} else if tp != nil && tq != nil {
+		e = tp.Length() == tq.Length()
+
+		length := tp.Length()
+		for i := 0; i < length && e; i++ {
+			tpf := tp.GetFieldAt(i)
+			tqf := tq.GetFieldAt(i)
+
+			if reflect.TypeOf(tpf) == reflect.TypeOf(TypeField{}) && reflect.TypeOf(tqf) == reflect.TypeOf(TypeField{}) {
+				atpf := tpf.(TypeField)
+				btpf := tqf.(TypeField)
+				e = e && atpf.Equal(btpf)
+			} else if function.IsFunc(tpf) && function.IsFunc(tqf) {
+				e = e && function.FuncName(tpf) == function.FuncName(tqf) && function.Signature(tpf) == function.Signature(tqf)
+			} else {
+				e = e && reflect.DeepEqual(tpf, tqf)
+			}
+		}
+	}
+
+	return e
+}
+
+// Match returns true if both templates tp and tq are equivalent up to their types, and false otherwise.
+func (tp *Template) Match(tq *Template) (e bool) {
+	e = false
+
+	if tp == nil && tp == tq {
+		e = true
+	} else if tp != nil && tq != nil {
+		e = tp.Length() == tq.Length()
+
+		length := tp.Length()
+		for i := 0; i < length && e; i++ {
+			tpf := tp.GetFieldAt(i)
+			tqf := tq.GetFieldAt(i)
+
+			if reflect.TypeOf(tpf) == reflect.TypeOf(TypeField{}) || reflect.TypeOf(tqf) == reflect.TypeOf(TypeField{}) {
+				atpf, ais := tpf.(TypeField)
+				btpf, bis := tqf.(TypeField)
+
+				if ais && bis {
+					e = e && atpf.Equal(btpf)
+				} else if ais {
+					e = e && reflect.TypeOf(tqf) == atpf.GetType()
+				} else if bis {
+					e = e && reflect.TypeOf(tpf) == btpf.GetType()
+				}
+			} else if function.IsFunc(tpf) && function.IsFunc(tqf) {
+				e = e && function.FuncName(tpf) == function.FuncName(tqf) && function.Signature(tpf) == function.Signature(tqf)
+			} else {
+				e = e && reflect.DeepEqual(tpf, tqf)
+			}
+		}
+	}
+
+	return e
+}
+
+// Length returns the size of the template.
+func (tp *Template) Length() (sz int) {
+	sz = -1
+
+	if tp != nil {
+		sz = len((*tp).Flds)
+	}
+
+	return sz
+}
+
+// Fields returns the fields of the template.
+func (tp *Template) Fields() (flds []interface{}) {
+	if tp != nil {
+		flds = (*tp).Flds
+	}
+
+	return flds
 }
 
 // GetFieldAt returns the i'th field of the template.
-func (tp *Template) GetFieldAt(i int) interface{} {
-	return (*tp).Fields[i]
+func (tp *Template) GetFieldAt(i int) (fld interface{}) {
+	if tp != nil {
+		fld = (*tp).Flds[i]
+	}
+
+	return fld
 }
 
 // setFieldAt sets the i'th field of the template to the value of val.
-func (tp *Template) setFieldAt(i int, val interface{}) {
-	(*tp).Fields[i] = val
+// setFieldAt returns true if the field is set, and false otherwise.
+func (tp *Template) setFieldAt(i int, val interface{}) (b bool) {
+	b = false
+
+	if tp != nil {
+		(*tp).Flds[i] = val
+		b = true
+	}
+
+	return b
 }
 
 // Apply iterates through the template tp and applies the function fun to each field.
-func (tp *Template) Apply(fun func(field interface{}) interface{}) {
-	for i := 0; i < tp.Length(); i += 1 {
-		tp.setFieldAt(i, fun(tp.GetFieldAt(i)))
+// Apply returns true function fun could be applied to all the fields, and false otherwise.
+func (tp *Template) Apply(fun func(field interface{}) interface{}) (b bool) {
+	b = false
+
+	if tp != nil {
+		b = true
+		for i := 0; i < tp.Length(); i++ {
+			b = b && tp.setFieldAt(i, fun(tp.GetFieldAt(i)))
+		}
 	}
+
+	return b
 }
 
 // NewTuple returns a new tuple t from the template.
 // NewTuple initializes all tuple fields in t with empty values depending on types in the template.
 func (tp *Template) NewTuple() (t Tuple) {
-	param := make([]interface{}, tp.Length())
 	var element interface{}
+	param := make([]interface{}, tp.Length())
 
-	for i, _ := range param {
+	for i := range param {
 		field := tp.GetFieldAt(i)
 
 		if field != nil {
@@ -115,7 +216,7 @@ func (tp Template) String() string {
 
 	strs := make([]string, tp.Length())
 
-	for i, _ := range strs {
+	for i := range strs {
 		field := tp.GetFieldAt(i)
 		if field != nil {
 			if reflect.TypeOf(field).Kind() == reflect.String {

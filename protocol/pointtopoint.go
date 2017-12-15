@@ -42,7 +42,7 @@ func (ptp *PointToPoint) GetName() string {
 	return ptp.name
 }
 
-// Registry will return the function registry associated to ptp.
+// GetRegistry will return the function registry associated to ptp.
 func (ptp *PointToPoint) GetRegistry() (fr *function.Registry) {
 	return ptp.funReg
 }

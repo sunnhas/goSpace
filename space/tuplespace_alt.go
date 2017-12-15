@@ -30,7 +30,7 @@ func tsAltLog(fun interface{}, e *error) {
 }
 
 // NewSpaceAlt creates a representation of a new tuple space.
-func NewSpaceAlt(url string, pol ...*policy.ComposablePolicy) (ptp *protocol.PointToPoint, ts *TupleSpace) {
+func NewSpaceAlt(url string, cp ...*policy.ComposablePolicy) (ptp *protocol.PointToPoint, ts *TupleSpace) {
 	registerTypes()
 
 	uri, err := shared.NewSpaceURI(url)
@@ -54,12 +54,13 @@ func NewSpaceAlt(url string, pol ...*policy.ComposablePolicy) (ptp *protocol.Poi
 			muTuples:         muTuples,
 			muWaitingClients: muWaitingClients,
 			tuples:           tuples,
+			pol:              nil,
 			funReg:           &funcReg,
 			port:             port,
 		}
 
-		if len(pol) == 1 {
-			(*ts).pol = pol[0]
+		if len(cp) == 1 {
+			(*ts).pol = cp[0]
 		}
 
 		go ts.Listen()

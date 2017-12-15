@@ -38,12 +38,12 @@ type NamespaceDictionary struct {
 	NameLookUp *sync.Map // [Namespace]*Namespace
 }
 
-// FunctionBind maintains a function binding.
+// FunctionBinding maintains a function binding.
 type FunctionBinding struct {
 	Binding *sync.Map // [*Namespace]Function
 }
 
-// LanguageBind is a structure to maintain a function mapping between two languages.
+// LanguageBinding is a structure to maintain a function mapping between two languages.
 type LanguageBinding struct {
 	InternalToExternal *sync.Map // [*Namespace]*Namespace
 	ExternalToInternal *sync.Map // [*Namespace]*Namespace
@@ -199,8 +199,8 @@ func (fb *FunctionBinding) Remove(ref *Namespace) (status bool) {
 	return status
 }
 
-// Binding returns a pointer to function fun given a namespace reference ref.
-// Binding returns nil if no function is a attached to the namespace reference ref.
+// Function returns a pointer to function fun given a namespace reference ref.
+// Function returns nil if no function is a attached to the namespace reference ref.
 func (fb *FunctionBinding) Function(ref *Namespace) (fun *Function) {
 	f, exists := (*fb).Binding.Load(ref)
 
@@ -357,9 +357,10 @@ func (lb LanguageBinding) String() (s string) {
 	return s
 }
 
-var GlobalRegistry *Registry = nil
+// GlobalRegistry is the global function registry used throughout the library.
+var GlobalRegistry *Registry
 
-// NewFunctionRegistry creates a function registry.
+// NewRegistry creates a function registry.
 func NewRegistry() (fr Registry) {
 	nsd := NewNamespaceDictionary()
 	fb := NewFunctionBinding()
