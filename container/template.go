@@ -1,47 +1,40 @@
-package shared
+package container
 
 import (
 	"fmt"
-	"github.com/pspaces/gospace/function"
 	"reflect"
 	"strings"
-)
 
-// Intertemplate an interface for manipulating templates.
-type Intertemplate interface {
-	function.Applier
-	Length() int
-	Fields() []interface{}
-	GetFieldAt(i int) interface{}
-	NewTuple() Tuple
-}
+	"github.com/pspaces/gospace/function"
+)
 
 // Template structure used for matching against tuples.
 // Template is a tuple with type information used for pattern matching.
 type Template struct {
-	Flds []interface{}
+	Flds []interface{} `bson:"fields" json:"fields" xml:"fields"`
 }
 
-// CreateTemplate creates a template from the variadic fields provided.
-// CreateTemplate encapsulates the types of pointer values and are used to provide variable binding.
-// Variable binding is used in Pattern matched values such that they can be writen back through the pointers.
-func CreateTemplate(fields ...interface{}) Template {
+// NewTemplate creates a template from the variadic fields provided.
+// NewTemplate encapsulates the types of pointer values.
+func NewTemplate(fields ...interface{}) (tp Template) {
 	tempfields := make([]interface{}, len(fields))
 	copy(tempfields, fields)
 
 	// Replace pointers with reflect.Type value used to match type.
 	for i, value := range fields {
-		if reflect.TypeOf(value).Kind() == reflect.Ptr {
-			// Encapsulate the parameter with a TypeField.
-			tempfields[i] = CreateTypeField(reflect.ValueOf(value).Elem().Type())
-		} else if function.IsFunc(value) && reflect.TypeOf(value).Kind() == reflect.Interface {
-			tempfields[i] = CreateTypeField(function.Type(value))
+		if value != nil {
+			if reflect.TypeOf(value).Kind() == reflect.Ptr {
+				// Encapsulate the parameter with a TypeField.
+				tempfields[i] = CreateTypeField(reflect.ValueOf(value).Elem().Interface())
+			} else if function.IsFunc(value) && reflect.TypeOf(value).Kind() == reflect.Interface {
+				tempfields[i] = CreateTypeField(value)
+			}
 		}
 	}
 
-	template := Template{tempfields}
+	tp = Template{tempfields}
 
-	return template
+	return tp
 }
 
 // Equal returns true if both templates tp and tq are strictly equal, and false otherwise.
@@ -63,7 +56,7 @@ func (tp *Template) Equal(tq *Template) (e bool) {
 				btpf := tqf.(TypeField)
 				e = e && atpf.Equal(btpf)
 			} else if function.IsFunc(tpf) && function.IsFunc(tqf) {
-				e = e && function.FuncName(tpf) == function.FuncName(tqf) && function.Signature(tpf) == function.Signature(tqf)
+				e = e && function.Name(tpf) == function.Name(tqf) && function.Signature(tpf) == function.Signature(tqf)
 			} else {
 				e = e && reflect.DeepEqual(tpf, tqf)
 			}
@@ -99,7 +92,7 @@ func (tp *Template) Match(tq *Template) (e bool) {
 					e = e && reflect.TypeOf(tpf) == btpf.GetType()
 				}
 			} else if function.IsFunc(tpf) && function.IsFunc(tqf) {
-				e = e && function.FuncName(tpf) == function.FuncName(tqf) && function.Signature(tpf) == function.Signature(tqf)
+				e = e && function.Name(tpf) == function.Name(tqf) && function.Signature(tpf) == function.Signature(tqf)
 			} else {
 				e = e && reflect.DeepEqual(tpf, tqf)
 			}
@@ -191,7 +184,7 @@ func (tp *Template) NewTuple() (t Tuple) {
 		param[i] = element
 	}
 
-	t = CreateTuple(param...)
+	t = NewTuple(param...)
 
 	return t
 }

@@ -1,4 +1,4 @@
-package shared
+package container
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ type LabelledTuple Tuple
 // NewLabelledTuple searches the first field for labels.
 func NewLabelledTuple(fields ...interface{}) (lt LabelledTuple) {
 	if len(fields) == 0 {
-		lt = LabelledTuple(CreateTuple(Labels{}))
+		lt = LabelledTuple(NewTuple(Labels{}))
 	} else {
 		var lbls Labels
 
@@ -32,10 +32,10 @@ func NewLabelledTuple(fields ...interface{}) (lt LabelledTuple) {
 		}
 
 		if len(fields) < 1 {
-			lt = LabelledTuple(CreateTuple(lbls))
+			lt = LabelledTuple(NewTuple(lbls))
 		} else {
 			fields[0] = lbls
-			lt = LabelledTuple(CreateTuple(fields...))
+			lt = LabelledTuple(NewTuple(fields...))
 		}
 	}
 
@@ -105,7 +105,7 @@ func (lt *LabelledTuple) Labels() (ls Labels) {
 
 // Tuple returns a tuple without the label.
 func (lt *LabelledTuple) Tuple() (t Tuple) {
-	t = CreateTuple((*lt).Flds[1:]...)
+	t = NewTuple((*lt).Flds[1:]...)
 	return t
 }
 

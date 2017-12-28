@@ -461,7 +461,7 @@ func (fr *Registry) Decode(exter Namespace) (fun *Function) {
 
 // interalNamespace returns an internal namespace for a function fun.
 func internalNamespace(fun Function) (s Namespace) {
-	funcName := strings.Replace(FuncName(fun), " ", "", -1)
+	funcName := strings.Replace(Name(fun), " ", "", -1)
 	funcSign := strings.Replace(Signature(fun), " ", "", -1)
 	s = Namespace(strings.Join([]string{funcName, ":", funcSign}, ""))
 	return s
@@ -469,7 +469,7 @@ func internalNamespace(fun Function) (s Namespace) {
 
 // exteralNamespace returns an external namespace for a function fun.
 func externalNamespace(fun Function) (s Namespace) {
-	funcName := strings.Replace(FuncName(fun), " ", "", -1)
+	funcName := strings.Replace(Name(fun), " ", "", -1)
 	funcSign := strings.Replace(Signature(fun), " ", "", -1)
 	reVersion := regexp.MustCompile("(\\d)\\.(\\d)(\\.(\\d))?")
 	goVersion := reVersion.FindString(runtime.Version())

@@ -2,8 +2,8 @@ package policy
 
 import (
 	"fmt"
+	"github.com/pspaces/gospace/container"
 	"github.com/pspaces/gospace/function"
-	"github.com/pspaces/gospace/shared"
 	"math"
 	"reflect"
 	"strings"
@@ -19,19 +19,19 @@ type Action struct {
 
 // ActionSignature is a structure for storing signature information for faster matching.
 type ActionSignature struct {
-	Oper   shared.Signature
-	Func   shared.Signature
-	Params shared.Signature
+	Oper   container.Signature
+	Func   container.Signature
+	Params container.Signature
 }
 
 // NewAction creates an action given a function and optionally a parameter list params.
 func NewAction(fun interface{}, params ...interface{}) (a *Action) {
-	operator := function.FuncName(fun)
+	operator := function.Name(fun)
 
 	sign := ActionSignature{
-		Oper:   shared.NewSignature(1, operator),
-		Func:   shared.NewSignature(1, fun),
-		Params: shared.NewSignature(math.MaxUint16, params),
+		Oper:   container.NewSignature(1, operator),
+		Func:   container.NewSignature(1, fun),
+		Params: container.NewSignature(math.MaxUint16, params),
 	}
 
 	a = &Action{Oper: operator, Func: fun, Params: params, Sign: sign}
@@ -63,8 +63,8 @@ func (a *Action) Equal(b *Action) (e bool) {
 		params := len(a.Parameters()) == len(b.Parameters())
 		if fun && params {
 			if aSign.Params != bSign.Params {
-				ta := shared.CreateTemplate(a.Parameters()...)
-				tb := shared.CreateTemplate(b.Parameters()...)
+				ta := container.NewTemplate(a.Parameters()...)
+				tb := container.NewTemplate(b.Parameters()...)
 				params = params && (&ta).Equal(&tb)
 			}
 		}

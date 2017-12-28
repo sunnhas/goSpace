@@ -1,4 +1,4 @@
-package shared
+package container
 
 import (
 	"crypto/sha256"
@@ -23,7 +23,7 @@ func NewSignature(rd uint, val interface{}) (s Signature) {
 
 	switch kind := reflect.ValueOf(val).Kind(); kind {
 	case reflect.Func:
-		halg.Write([]byte(fmt.Sprintf("%v%v%v", reflect.ValueOf(val).Pointer(), function.FuncName(val), function.Signature(val))))
+		halg.Write([]byte(fmt.Sprintf("%v%v%v", reflect.ValueOf(val).Pointer(), function.Name(val), function.Signature(val))))
 	case reflect.Array, reflect.Slice:
 		if rd >= 0 {
 			params := val.([]interface{})

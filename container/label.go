@@ -1,4 +1,4 @@
-package shared
+package container
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ type Label Tuple
 // NewLabel creates a new label with identifier id and an optional value v.
 func NewLabel(id string) (l Label) {
 	params := []interface{}{id}
-	l = Label(CreateTuple(params...))
+	l = Label(NewTuple(params...))
 	return l
 }
 

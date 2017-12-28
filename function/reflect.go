@@ -75,9 +75,9 @@ func IsFunc(fun interface{}) (b bool) {
 	return b
 }
 
-// FuncName returns name of the function as a string s.
-// FuncName will panic if function is not a function or method.
-func FuncName(fun interface{}) (s string) {
+// Name returns name of the function as a string s.
+// Name will panic if function is not a function or method.
+func Name(fun interface{}) (s string) {
 	var fn reflect.Value
 	if reflect.TypeOf(fun) == reflect.TypeOf(reflect.Value{}) {
 		fn = fun.(reflect.Value)
@@ -167,7 +167,6 @@ func Type(fun interface{}) (t reflect.Type) {
 		fn = reflect.ValueOf(fun)
 	}
 
-	fmt.Printf("%v", fn.Type())
 	t = fn.Type()
 
 	return t

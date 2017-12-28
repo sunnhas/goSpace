@@ -1,4 +1,4 @@
-package shared
+package container
 
 import (
 	"reflect"
@@ -72,5 +72,5 @@ func createTestTemplate() Template {
 	intPtr := &intVal
 	testFields[4] = intPtr
 
-	return CreateTemplate(testFields...)
+	return NewTemplate(testFields...)
 }

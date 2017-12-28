@@ -1,4 +1,4 @@
-package function
+package container
 
 // Applier interface describes for map functionality for collections.
 type Applier interface {

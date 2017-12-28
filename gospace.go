@@ -1,25 +1,25 @@
 package gospace
 
 import (
+	con "github.com/pspaces/gospace/container"
 	pol "github.com/pspaces/gospace/policy"
-	shr "github.com/pspaces/gospace/shared"
 	spc "github.com/pspaces/gospace/space"
 )
 
-type Intertuple = shr.Intertuple
+type Intertuple = con.Intertuple
 
 type Space = spc.Space
-type Tuple = shr.Tuple
-type Template = shr.Template
+type Tuple = con.Tuple
+type Template = con.Template
 
-type Label = shr.Label
-type Labels = shr.Labels
-type LabelledTuple = shr.LabelledTuple
+type Label = con.Label
+type Labels = con.Labels
+type LabelledTuple = con.LabelledTuple
 
 type Action = pol.Action
 type AggregationRule = pol.AggregationRule
-type AggregationPolicy = pol.AggregationPolicy
-type ComposablePolicy = pol.ComposablePolicy
+type AggregationPolicy = pol.Aggregation
+type ComposablePolicy = pol.Composable
 type Transformation = pol.Transformation
 type Transformations = pol.Transformations
 
@@ -41,37 +41,37 @@ type SpaceFrame interface {
 
 // CreateTuple creates a structure that represents a tuple.
 func CreateTuple(fields ...interface{}) Tuple {
-	return shr.CreateTuple(fields...)
+	return con.NewTuple(fields...)
 }
 
 // TupleFrame contains all interfaces that can operate on a tuple.
 type TupleFrame interface {
-	shr.Intertuple
+	con.Intertuple
 }
 
 // CreateTemplate creates a structure that represents a template.
 func CreateTemplate(fields ...interface{}) Template {
-	return shr.CreateTemplate(fields...)
+	return con.NewTemplate(fields...)
 }
 
 // TemplateFrame contains all interfaces that can operate on a template.
 type TemplateFrame interface {
-	shr.Intertemplate
+	con.Intertemplate
 }
 
 // NewLabel creates a structure that represents a label.
 func NewLabel(id string) Label {
-	return shr.NewLabel(id)
+	return con.NewLabel(id)
 }
 
 // NewLabels creates a structure that represents a collection of labels.
 func NewLabels(ll ...Label) Labels {
-	return shr.NewLabels(ll...)
+	return con.NewLabels(ll...)
 }
 
 // NewLabelledTuple creates a structure that represents a labelled tuple.
 func NewLabelledTuple(fields ...interface{}) LabelledTuple {
-	return shr.NewLabelledTuple(fields...)
+	return con.NewLabelledTuple(fields...)
 }
 
 // NewAction creates a structure that represents an action.
@@ -86,12 +86,12 @@ func NewAggregationRule(a Action, trs Transformations) AggregationRule {
 
 // NewAggregationPolicy creates a structure that represents an aggregation policy.
 func NewAggregationPolicy(l Label, r AggregationRule) AggregationPolicy {
-	return pol.NewAggregationPolicy(l, r)
+	return pol.NewAggregation(l, r)
 }
 
 // NewComposablePolicy creates a structure that represents a composable policy.
 func NewComposablePolicy(ars ...AggregationPolicy) *ComposablePolicy {
-	return pol.NewComposablePolicy(ars...)
+	return pol.NewComposable(ars...)
 }
 
 // NewTransformation creates a structure for representing a transformation that can be applied to an action.

@@ -2,20 +2,20 @@ package policy
 
 import (
 	"fmt"
-	"github.com/pspaces/gospace/shared"
+	"github.com/pspaces/gospace/container"
 	"strings"
 	"sync"
 )
 
-// ComposablePolicy is a structure for containing composable policies.
-type ComposablePolicy struct {
-	ActionMap *sync.Map // [Action.String()]Label
-	LabelMap  *sync.Map // [Label.String()]AggregationPolicy
+// Composable is a structure for containing composable policies.
+type Composable struct {
+	ActionMap *sync.Map // [Action]Label
+	LabelMap  *sync.Map // [Label]AggregationPolicy
 }
 
-// NewComposablePolicy creates a composable policy cp from any amount of aggregation policies aps.
-func NewComposablePolicy(aps ...AggregationPolicy) (cp *ComposablePolicy) {
-	cp = &ComposablePolicy{ActionMap: new(sync.Map), LabelMap: new(sync.Map)}
+// NewComposable creates a composable policy cp from any amount of aggregation policies aps.
+func NewComposable(aps ...Aggregation) (cp *Composable) {
+	cp = &Composable{ActionMap: new(sync.Map), LabelMap: new(sync.Map)}
 
 	for _, ap := range aps {
 		cp.Add(ap)
@@ -26,7 +26,7 @@ func NewComposablePolicy(aps ...AggregationPolicy) (cp *ComposablePolicy) {
 
 // Add adds an aggregation policy ap to the composable policy cp.
 // Add returns true if the aggregation policy ap has been added to the composable policy cp, and false otherwise.
-func (cp *ComposablePolicy) Add(ap AggregationPolicy) (b bool) {
+func (cp *Composable) Add(ap Aggregation) (b bool) {
 	b = cp != nil
 
 	if b {
@@ -54,7 +54,7 @@ func (cp *ComposablePolicy) Add(ap AggregationPolicy) (b bool) {
 }
 
 // Find returns a reference to a label l given an action a.
-func (cp *ComposablePolicy) Find(a *Action) (l *shared.Label) {
+func (cp *Composable) Find(a *Action) (l *container.Label) {
 	b := cp != nil
 	l = nil
 
@@ -62,7 +62,7 @@ func (cp *ComposablePolicy) Find(a *Action) (l *shared.Label) {
 		as := a.Signature()
 		val, exists := cp.ActionMap.Load(as)
 		if exists {
-			lbl := val.(shared.Label)
+			lbl := val.(container.Label)
 			lbl = lbl.DeepCopy()
 			l = &lbl
 		}
@@ -73,7 +73,7 @@ func (cp *ComposablePolicy) Find(a *Action) (l *shared.Label) {
 
 // Retrieve returns a reference to the aggregation policy ap with label l from the composable policy cp.
 // Retrieve returns a reference if it exists and nil otherwise.
-func (cp *ComposablePolicy) Retrieve(l shared.Label) (ap *AggregationPolicy) {
+func (cp *Composable) Retrieve(l container.Label) (ap *Aggregation) {
 	b := cp != nil
 	ap = nil
 
@@ -81,7 +81,7 @@ func (cp *ComposablePolicy) Retrieve(l shared.Label) (ap *AggregationPolicy) {
 		lid := l.Id()
 		val, exists := cp.LabelMap.Load(lid)
 		if exists {
-			pol := val.(AggregationPolicy)
+			pol := val.(Aggregation)
 			ap = &pol
 		}
 	}
@@ -91,14 +91,14 @@ func (cp *ComposablePolicy) Retrieve(l shared.Label) (ap *AggregationPolicy) {
 
 // Delete removes an aggregation policy with label l from the composable policy cp.
 // Delete returns true if an aggregation policy with label l has been deleted from the composable policy cp, and false otherwise.
-func (cp *ComposablePolicy) Delete(l shared.Label) (b bool) {
+func (cp *Composable) Delete(l container.Label) (b bool) {
 	b = cp != nil
 
 	if b {
 		lid := l.Id()
 		val, exists := cp.LabelMap.Load(lid)
 		if exists {
-			ap := val.(AggregationPolicy)
+			ap := val.(Aggregation)
 			a := ap.Action()
 			cp.LabelMap.Delete(l)
 			cp.ActionMap.Delete(a)
@@ -111,7 +111,7 @@ func (cp *ComposablePolicy) Delete(l shared.Label) (b bool) {
 }
 
 // String returns a print friendly representation of a composable policy cp.
-func (cp ComposablePolicy) String() (s string) {
+func (cp Composable) String() (s string) {
 	var actionEntries, labelEntries []string
 
 	entries := []string{}

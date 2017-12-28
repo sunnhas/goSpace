@@ -4,15 +4,17 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"github.com/pspaces/gospace/function"
-	"github.com/pspaces/gospace/policy"
-	"github.com/pspaces/gospace/protocol"
-	"github.com/pspaces/gospace/shared"
 	"log"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pspaces/gospace/container"
+	"github.com/pspaces/gospace/function"
+	"github.com/pspaces/gospace/policy"
+	"github.com/pspaces/gospace/protocol"
+	"github.com/pspaces/gospace/space/uri"
 )
 
 // Constants for logging errors occuring in this file.
@@ -25,20 +27,20 @@ var (
 func tsAltLog(fun interface{}, e *error) {
 	if *e != nil {
 		fmt.Print(&tsAltBuf)
-		tsAltLogger.Printf("%s: %s\n", function.FuncName(fun), *e)
+		tsAltLogger.Printf("%s: %s\n", function.Name(fun), *e)
 	}
 }
 
 // NewSpaceAlt creates a representation of a new tuple space.
-func NewSpaceAlt(url string, cp ...*policy.ComposablePolicy) (ptp *protocol.PointToPoint, ts *TupleSpace) {
+func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoint, ts *TupleSpace) {
 	registerTypes()
 
-	uri, err := shared.NewSpaceURI(url)
+	u, err := uri.NewSpaceURI(url)
 
 	if err == nil {
 		muTuples := new(sync.RWMutex)
 		muWaitingClients := new(sync.Mutex)
-		tuples := []shared.Tuple{}
+		tuples := []container.Tuple{}
 
 		// TODO: Exchange capabilities instead and
 		// TODO: make a mechanism capable of doing that.
@@ -48,7 +50,7 @@ func NewSpaceAlt(url string, cp ...*policy.ComposablePolicy) (ptp *protocol.Poin
 		}
 		funcReg := *function.GlobalRegistry
 
-		port := strings.Join([]string{"", uri.Port()}, ":")
+		port := strings.Join([]string{"", u.Port()}, ":")
 
 		ts = &TupleSpace{
 			muTuples:         muTuples,
@@ -68,7 +70,7 @@ func NewSpaceAlt(url string, cp ...*policy.ComposablePolicy) (ptp *protocol.Poin
 		// TODO: This is not the best way of doing it since
 		// TODO: a host can resolve to multiple addresses.
 		// TODO: For now, accept this limitation, and fix it soon.
-		ptp = protocol.CreatePointToPoint(uri.Space(), "localhost", uri.Port(), &funcReg)
+		ptp = protocol.CreatePointToPoint(u.Space(), "localhost", u.Port(), &funcReg)
 	} else {
 		ts = nil
 		ptp = nil
@@ -81,7 +83,7 @@ func NewSpaceAlt(url string, cp ...*policy.ComposablePolicy) (ptp *protocol.Poin
 func NewRemoteSpaceAlt(url string) (ptp *protocol.PointToPoint, ts *TupleSpace) {
 	registerTypes()
 
-	uri, err := shared.NewSpaceURI(url)
+	u, err := uri.NewSpaceURI(url)
 
 	if err == nil {
 		// TODO: Exchange capabilities instead and
@@ -95,7 +97,7 @@ func NewRemoteSpaceAlt(url string) (ptp *protocol.PointToPoint, ts *TupleSpace) 
 		// TODO: This is not the best way of doing it since
 		// TODO: a host can resolve to multiple addresses.
 		// TODO: For now, accept this limitation, and fix it soon.
-		ptp = protocol.CreatePointToPoint(uri.Space(), uri.Hostname(), uri.Port(), &funcReg)
+		ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), u.Port(), &funcReg)
 	} else {
 		ts = nil
 		ptp = nil
@@ -106,11 +108,11 @@ func NewRemoteSpaceAlt(url string) (ptp *protocol.PointToPoint, ts *TupleSpace) 
 
 // registerTypes registers all the types necessary for the implementation.
 func registerTypes() {
-	gob.Register(shared.Label{})
-	gob.Register(shared.Labels{})
-	gob.Register(shared.Template{})
-	gob.Register(shared.Tuple{})
-	gob.Register(shared.TypeField{})
+	gob.Register(container.Label{})
+	gob.Register(container.Labels{})
+	gob.Register(container.Template{})
+	gob.Register(container.Tuple{})
+	gob.Register(container.TypeField{})
 	gob.Register([]interface{}{})
 }
 
@@ -153,7 +155,7 @@ func Size(ptp protocol.PointToPoint) (sz int, b bool) {
 // which includes the type of operation and tuple specified by the user.
 // The method returns a boolean to inform if the operation was carried out with
 // success or not.
-func Put(ptp protocol.PointToPoint, tupleFields ...interface{}) (b bool) {
+func Put(ptp protocol.PointToPoint, tupleFields ...interface{}) (t container.Tuple, b bool) {
 	var conn *net.Conn
 	var err error
 
@@ -161,7 +163,7 @@ func Put(ptp protocol.PointToPoint, tupleFields ...interface{}) (b bool) {
 
 	b = false
 
-	t := shared.CreateTuple(tupleFields...)
+	t = container.NewTuple(tupleFields...)
 
 	// Never time out and block until connection will be established.
 	conn, err = establishConnection(ptp)
@@ -183,21 +185,22 @@ func Put(ptp protocol.PointToPoint, tupleFields ...interface{}) (b bool) {
 	defer (*conn).Close()
 
 	funcEncode(ptp.GetRegistry(), &t)
+	defer funcDecode(ptp.GetRegistry(), &t)
 
 	err = sendMessage(conn, protocol.PutRequest, t)
 
 	if err != nil {
-		return b
+		return container.NewTuple(nil), b
 	}
 
 	b, err = receiveMessageBool(conn)
 
 	if err != nil {
 		b = false
-		return b
+		return container.NewTuple(nil), b
 	}
 
-	return b
+	return t, b
 }
 
 // PutP will open a TCP connection to the PointToPoint and send the message,
@@ -206,7 +209,7 @@ func Put(ptp protocol.PointToPoint, tupleFields ...interface{}) (b bool) {
 // operation was successful.
 // The method returns a boolean to inform if the operation was carried out with
 // any errors with communication.
-func PutP(ptp protocol.PointToPoint, tupleFields ...interface{}) (b bool) {
+func PutP(ptp protocol.PointToPoint, tupleFields ...interface{}) (t container.Tuple, b bool) {
 	var conn *net.Conn
 	var err error
 
@@ -214,48 +217,49 @@ func PutP(ptp protocol.PointToPoint, tupleFields ...interface{}) (b bool) {
 
 	b = false
 
-	t := shared.CreateTuple(tupleFields...)
+	t = container.NewTuple(tupleFields...)
 
 	conn, err = establishConnection(ptp)
 
 	if err != nil {
-		return b
+		return container.NewTuple(nil), b
 	}
 
 	defer (*conn).Close()
 
 	funcEncode(ptp.GetRegistry(), &t)
+	defer funcDecode(ptp.GetRegistry(), &t)
 
 	err = sendMessage(conn, protocol.PutPRequest, t)
 
 	if err != nil {
-		return b
-	} else {
-		b = true
+		return container.NewTuple(nil), b
 	}
 
-	return b
+	b = true
+
+	return t, b
 }
 
 // Get will open a TCP connection to the PointToPoint and send the message,
 // which includes the type of operation and template specified by the user.
 // The method returns a boolean to inform if the operation was carried out with
 // any errors with communication.
-func Get(ptp protocol.PointToPoint, tempFields ...interface{}) (b bool) {
-	b = getAndQuery(ptp, protocol.GetRequest, tempFields...)
-	return b
+func Get(ptp protocol.PointToPoint, tempFields ...interface{}) (t container.Tuple, b bool) {
+	t, b = getAndQuery(ptp, protocol.GetRequest, tempFields...)
+	return t, b
 }
 
 // Query will open a TCP connection to the PointToPoint and send the message,
 // which includes the type of operation and template specified by the user.
 // The method returns a boolean to inform if the operation was carried out with
 // any errors with communication.
-func Query(ptp protocol.PointToPoint, tempFields ...interface{}) (b bool) {
-	b = getAndQuery(ptp, protocol.QueryRequest, tempFields...)
-	return b
+func Query(ptp protocol.PointToPoint, tempFields ...interface{}) (t container.Tuple, b bool) {
+	t, b = getAndQuery(ptp, protocol.QueryRequest, tempFields...)
+	return t, b
 }
 
-func getAndQuery(ptp protocol.PointToPoint, operation string, tempFields ...interface{}) (b bool) {
+func getAndQuery(ptp protocol.PointToPoint, operation string, tempFields ...interface{}) (t container.Tuple, b bool) {
 	var conn *net.Conn
 	var err error
 
@@ -263,7 +267,7 @@ func getAndQuery(ptp protocol.PointToPoint, operation string, tempFields ...inte
 
 	b = false
 
-	tp := shared.CreateTemplate(tempFields...)
+	tp := container.NewTemplate(tempFields...)
 
 	// Never time out and block until connection will be established.
 	conn, err = establishConnection(ptp)
@@ -286,34 +290,32 @@ func getAndQuery(ptp protocol.PointToPoint, operation string, tempFields ...inte
 	defer (*conn).Close()
 
 	funcEncode(ptp.GetRegistry(), &tp)
+	defer funcDecode(ptp.GetRegistry(), &t)
 
 	err = sendMessage(conn, operation, tp)
 
 	if err != nil {
-		return b
+		return container.NewTuple(nil), b
 	}
 
-	var t shared.Tuple
 	t, err = receiveMessageTuple(conn)
 
 	if err != nil {
-		return b
-	} else {
-		b = true
+		return container.NewTuple(nil), b
 	}
+
+	b = true
 
 	funcDecode(ptp.GetRegistry(), &t)
 
-	t.WriteToVariables(tempFields...)
-
-	return b
+	return t, b
 }
 
 // GetP will open a TCP connection to the PointToPoint and send the message,
 // which includes the type of operation and template specified by the user.
 // The function will return two bool values. The first denotes if a tuple was
 // found, the second if there were any erors with communication.
-func GetP(ptp protocol.PointToPoint, tempFields ...interface{}) (bool, bool) {
+func GetP(ptp protocol.PointToPoint, tempFields ...interface{}) (container.Tuple, bool, bool) {
 	return getPAndQueryP(ptp, protocol.GetPRequest, tempFields...)
 }
 
@@ -321,11 +323,11 @@ func GetP(ptp protocol.PointToPoint, tempFields ...interface{}) (bool, bool) {
 // which includes the type of operation and template specified by the user.
 // The function will return two bool values. The first denotes if a tuple was
 // found, the second if there were any erors with communication.
-func QueryP(ptp protocol.PointToPoint, tempFields ...interface{}) (bool, bool) {
+func QueryP(ptp protocol.PointToPoint, tempFields ...interface{}) (container.Tuple, bool, bool) {
 	return getPAndQueryP(ptp, protocol.QueryPRequest, tempFields...)
 }
 
-func getPAndQueryP(ptp protocol.PointToPoint, operation string, tempFields ...interface{}) (tb bool, sb bool) {
+func getPAndQueryP(ptp protocol.PointToPoint, operation string, tempFields ...interface{}) (t container.Tuple, tb bool, sb bool) {
 	var conn *net.Conn
 	var err error
 
@@ -334,40 +336,34 @@ func getPAndQueryP(ptp protocol.PointToPoint, operation string, tempFields ...in
 	tb = false
 	sb = false
 
-	tp := shared.CreateTemplate(tempFields...)
+	tp := container.NewTemplate(tempFields...)
 
 	conn, err = establishConnection(ptp)
 
 	if err != nil {
-		return tb, sb
+		return container.NewTuple(nil), tb, sb
 	}
 
 	defer (*conn).Close()
 
 	funcEncode(ptp.GetRegistry(), &tp)
+	defer funcDecode(ptp.GetRegistry(), &tp)
 
 	err = sendMessage(conn, operation, tp)
 
 	if err != nil {
-		return tb, sb
+		return container.NewTuple(nil), tb, sb
 	}
 
-	var t shared.Tuple
 	tb, t, err = receiveMessageBoolAndTuple(conn)
 
 	if err != nil {
-		return tb, sb
-	} else {
-		sb = true
+		return container.NewTuple(nil), tb, sb
 	}
 
-	funcDecode(ptp.GetRegistry(), &t)
+	sb = true
 
-	if tb {
-		t.WriteToVariables(tempFields...)
-	}
-
-	return tb, sb
+	return t, tb, sb
 }
 
 // GetAll will open a TCP connection to the PointToPoint and send the message,
@@ -375,7 +371,7 @@ func getPAndQueryP(ptp protocol.PointToPoint, operation string, tempFields ...in
 // The method is nonblocking and will return all tuples found in the tuple
 // space as well as a bool to denote if there were any errors with the
 // communication.
-func GetAll(ptp protocol.PointToPoint, tempFields ...interface{}) (ts []shared.Tuple, b bool) {
+func GetAll(ptp protocol.PointToPoint, tempFields ...interface{}) (ts []container.Tuple, b bool) {
 	ts, b = getAllAndQueryAll(ptp, protocol.GetAllRequest, tempFields...)
 	return ts, b
 }
@@ -385,21 +381,21 @@ func GetAll(ptp protocol.PointToPoint, tempFields ...interface{}) (ts []shared.T
 // The method is nonblocking and will return all tuples found in the tuple
 // space as well as a bool to denote if there were any errors with the
 // communication.
-func QueryAll(ptp protocol.PointToPoint, tempFields ...interface{}) (ts []shared.Tuple, b bool) {
+func QueryAll(ptp protocol.PointToPoint, tempFields ...interface{}) (ts []container.Tuple, b bool) {
 	ts, b = getAllAndQueryAll(ptp, protocol.QueryAllRequest, tempFields...)
 	return ts, b
 }
 
-func getAllAndQueryAll(ptp protocol.PointToPoint, operation string, tempFields ...interface{}) (ts []shared.Tuple, b bool) {
+func getAllAndQueryAll(ptp protocol.PointToPoint, operation string, tempFields ...interface{}) (ts []container.Tuple, b bool) {
 	var conn *net.Conn
 	var err error
 
 	defer tsAltLog(getAllAndQueryAll, &err)
 
-	ts = []shared.Tuple{}
+	ts = []container.Tuple{}
 	b = false
 
-	tp := shared.CreateTemplate(tempFields...)
+	tp := container.NewTemplate(tempFields...)
 
 	conn, err = establishConnection(ptp)
 
@@ -421,9 +417,9 @@ func getAllAndQueryAll(ptp protocol.PointToPoint, operation string, tempFields .
 
 	if err != nil {
 		return ts, b
-	} else {
-		b = true
 	}
+
+	b = true
 
 	for _, t := range ts {
 		funcDecode(ptp.GetRegistry(), &t)
@@ -436,7 +432,7 @@ func getAllAndQueryAll(ptp protocol.PointToPoint, operation string, tempFields .
 // This method is nonblocking and will return a tuple and boolean state to denote if there were any errors
 // with the communication. The tuple returned is the aggregation of tuples in the space.
 // If no tuples are found it will create and put a new tuple from the template itself.
-func PutAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{}) (t shared.Tuple, b bool) {
+func PutAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{}) (t container.Tuple, b bool) {
 	t, b = aggOperation(ptp, protocol.PutAggRequest, fun, tempFields...)
 	return t, b
 }
@@ -445,7 +441,7 @@ func PutAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{
 // This method is nonblocking and will return a tuple perfomed by the aggregation
 // as well as a boolean state to denote if there were any errors with the communication.
 // The resulting tuple is empty if no matching occurs or the aggregation function can not aggregate the matched tuples.
-func GetAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{}) (t shared.Tuple, b bool) {
+func GetAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{}) (t container.Tuple, b bool) {
 	t, b = aggOperation(ptp, protocol.GetAggRequest, fun, tempFields...)
 	return t, b
 }
@@ -454,24 +450,24 @@ func GetAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{
 // which includes the type of operation specified by the user.
 // The method is nonblocking and will return a tuple found by aggregating the matched typles.
 // The resulting tuple is empty if no matching occurs or the aggregation function can not aggregate the matched tuples.
-func QueryAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{}) (t shared.Tuple, b bool) {
+func QueryAgg(ptp protocol.PointToPoint, fun interface{}, tempFields ...interface{}) (t container.Tuple, b bool) {
 	t, b = aggOperation(ptp, protocol.QueryAggRequest, fun, tempFields...)
 	return t, b
 }
 
-func aggOperation(ptp protocol.PointToPoint, operation string, fun interface{}, tempFields ...interface{}) (t shared.Tuple, b bool) {
+func aggOperation(ptp protocol.PointToPoint, operation string, fun interface{}, tempFields ...interface{}) (t container.Tuple, b bool) {
 	var conn *net.Conn
 	var err error
 
 	defer tsAltLog(aggOperation, &err)
 
-	t = shared.CreateTuple()
+	t = container.NewTuple()
 	b = false
 
 	fields := make([]interface{}, len(tempFields)+1)
 	fields[0] = fun
 	copy(fields[1:], tempFields)
-	tp := shared.CreateTemplate(fields...)
+	tp := container.NewTemplate(fields...)
 
 	conn, err = establishConnection(ptp)
 
@@ -493,9 +489,9 @@ func aggOperation(ptp protocol.PointToPoint, operation string, fun interface{}, 
 
 	if err != nil {
 		return t, b
-	} else {
-		b = true
 	}
+
+	b = true
 
 	funcDecode(ptp.GetRegistry(), &t)
 
@@ -523,7 +519,7 @@ func establishConnection(ptp protocol.PointToPoint, timeout ...time.Duration) (*
 
 func sendMessage(conn *net.Conn, operation string, t interface{}) (err error) {
 	gob.Register(t)
-	gob.Register(shared.TypeField{})
+	gob.Register(container.TypeField{})
 
 	enc := gob.NewEncoder(*conn)
 
@@ -550,7 +546,7 @@ func receiveMessageInt(conn *net.Conn) (i int, err error) {
 	return i, err
 }
 
-func receiveMessageTuple(conn *net.Conn) (t shared.Tuple, err error) {
+func receiveMessageTuple(conn *net.Conn) (t container.Tuple, err error) {
 	dec := gob.NewDecoder(*conn)
 
 	err = dec.Decode(&t)
@@ -558,19 +554,19 @@ func receiveMessageTuple(conn *net.Conn) (t shared.Tuple, err error) {
 	return t, err
 }
 
-func receiveMessageBoolAndTuple(conn *net.Conn) (b bool, t shared.Tuple, err error) {
+func receiveMessageBoolAndTuple(conn *net.Conn) (b bool, t container.Tuple, err error) {
 	dec := gob.NewDecoder(*conn)
 
 	var result []interface{}
 	err = dec.Decode(&result)
 
 	b = result[0].(bool)
-	t = result[1].(shared.Tuple)
+	t = result[1].(container.Tuple)
 
 	return b, t, err
 }
 
-func receiveMessageTupleList(conn *net.Conn) (ts []shared.Tuple, err error) {
+func receiveMessageTupleList(conn *net.Conn) (ts []container.Tuple, err error) {
 	dec := gob.NewDecoder(*conn)
 
 	err = dec.Decode(&ts)

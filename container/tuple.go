@@ -1,30 +1,21 @@
-package shared
+package container
 
 import (
 	"fmt"
-	"github.com/pspaces/gospace/function"
 	"reflect"
 	"strings"
-)
 
-// Intertuple defines an interface for manipulating tuples.
-type Intertuple interface {
-	function.Applier
-	Tuple() Tuple
-	Length() int
-	Fields() []interface{}
-	GetFieldAt(i int) interface{}
-	SetFieldAt(i int, val interface{}) bool
-}
+	"github.com/pspaces/gospace/function"
+)
 
 // Tuple contains a set of fields, where fields can be any primitive or type.
 // A tuple is used to store information which is placed in a tuple space.
 type Tuple struct {
-	Flds []interface{}
+	Flds []interface{} `bson:"fields" json:"fields" xml:"fields"`
 }
 
-// CreateTuple create a tuple according to the values in the fields.
-func CreateTuple(fields ...interface{}) Tuple {
+// NewTuple create a tuple according to the values in the fields.
+func NewTuple(fields ...interface{}) Tuple {
 	tf := make([]interface{}, len(fields))
 	copy(tf, fields)
 	tuple := Tuple{tf}
@@ -45,7 +36,7 @@ func CreateIntrinsicTuple(t ...interface{}) (tp Tuple) {
 		}
 	}
 
-	tp = CreateTuple(fields...)
+	tp = NewTuple(fields...)
 
 	return tp
 }
@@ -106,7 +97,7 @@ func (t *Tuple) Apply(fun func(field interface{}) interface{}) (b bool) {
 
 // Tuple returns a new tuple.
 func (t *Tuple) Tuple() (tn Tuple) {
-	tn = CreateTuple((*t).Flds[:]...)
+	tn = NewTuple((*t).Flds[:]...)
 	return tn
 }
 
@@ -129,7 +120,7 @@ func (t *Tuple) Match(tp Template) (b bool) {
 			// If a function has a static address, and one has two functions with the same static address,
 			// then the functionality they provide must be equal. Then we shall match and accept any consequences of
 			// inlining and using addresses of anonymous functions.
-			b = (function.FuncName(tf) == function.FuncName(tpf)) && (function.Signature(tf) == function.Signature(tpf))
+			b = (function.Name(tf) == function.Name(tpf)) && (function.Signature(tf) == function.Signature(tpf))
 		} else {
 			b = reflect.DeepEqual(tf, tpf)
 		}
@@ -164,7 +155,7 @@ func (t Tuple) String() string {
 			if reflect.TypeOf(field).Kind() == reflect.String {
 				strs[i] = fmt.Sprintf("%s%s%s", "\"", field, "\"")
 			} else if function.IsFunc(field) {
-				strs[i] = fmt.Sprintf("%s %s", function.FuncName(field), function.Signature(field))
+				strs[i] = fmt.Sprintf("%s %s", function.Name(field), function.Signature(field))
 			} else {
 				strs[i] = fmt.Sprintf("%v", field)
 			}

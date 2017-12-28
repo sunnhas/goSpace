@@ -1,7 +1,6 @@
 package protocol
 
 // Constants used for the messages.
-// Each constant will take an int value starting from 0 and incrementing by 1.
 const (
 	PutRequest       = "PUT_REQUEST"
 	PutResponse      = "PUT_RESPONSE"

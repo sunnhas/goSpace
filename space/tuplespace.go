@@ -3,14 +3,15 @@ package space
 import (
 	"encoding/gob"
 	"fmt"
-	"github.com/pspaces/gospace/function"
-	"github.com/pspaces/gospace/policy"
-	"github.com/pspaces/gospace/protocol"
-	"github.com/pspaces/gospace/shared"
 	"net"
 	"reflect"
 	"strconv"
 	"sync"
+
+	"github.com/pspaces/gospace/container"
+	"github.com/pspaces/gospace/function"
+	"github.com/pspaces/gospace/policy"
+	"github.com/pspaces/gospace/protocol"
 )
 
 // TupleSpace contains a set of tuples and it has a mutex lock associated with
@@ -19,18 +20,18 @@ import (
 type TupleSpace struct {
 	muTuples         *sync.RWMutex            // Lock for the tuples[].
 	muWaitingClients *sync.Mutex              // Lock for the waitingClients[].
-	tuples           []shared.Tuple           // Tuples in the tuple space.
+	tuples           []container.Tuple        // Tuples in the tuple space.
 	funReg           *function.Registry       // Function registry associated to the tuple space.
-	pol              *policy.ComposablePolicy // Policy associated to the tuple space.
+	pol              *policy.Composable       // Policy associated to the tuple space.
 	port             string                   // Port number for the tuple space.
 	waitingClients   []protocol.WaitingClient // Structure for clients that couldn't initially find a matching tuple.
 }
 
 // CreateTupleSpace creates a new tuple space.
 func CreateTupleSpace(port int) (ts *TupleSpace) {
-	gob.Register(shared.Template{})
-	gob.Register(shared.Tuple{})
-	gob.Register(shared.TypeField{})
+	gob.Register(container.Template{})
+	gob.Register(container.Tuple{})
+	gob.Register(container.TypeField{})
 
 	muTuples := new(sync.RWMutex)
 	muWaitingClients := new(sync.Mutex)
@@ -46,7 +47,7 @@ func CreateTupleSpace(port int) (ts *TupleSpace) {
 	ts = &TupleSpace{
 		muTuples:         muTuples,
 		muWaitingClients: muWaitingClients,
-		tuples:           []shared.Tuple{},
+		tuples:           []container.Tuple{},
 		funReg:           &funcReg,
 		pol:              nil,
 		port:             strconv.Itoa(port),
@@ -57,6 +58,132 @@ func CreateTupleSpace(port int) (ts *TupleSpace) {
 	return ts
 }
 
+// Listen will listen and accept all incoming connections. Once a connection has
+// been established, the connection is passed on to the handler.
+func (ts *TupleSpace) Listen() {
+	defer handleRecover(ts.Listen)
+
+	var listener net.Listener
+	var err error
+
+	proto := "tcp4"
+
+	listener, err = net.Listen(proto, ts.port)
+
+	if err != nil {
+		err := fmt.Errorf("%s %s. %s: %s", "could not start listener at ", ts.port, "Error", err)
+		panic(err)
+	}
+
+	defer listener.Close()
+
+	var c net.Conn
+	for {
+		c, err = listener.Accept()
+
+		if err != nil {
+			if c != nil {
+				c.Close()
+			}
+
+			return
+		}
+
+		go ts.handle(c)
+
+	}
+}
+
+// handle will read and decode the message from the connection.
+// The decoded message will be passed on to the respective method.
+func (ts *TupleSpace) handle(conn net.Conn) {
+	defer handleRecover(ts.handle)
+
+	// Make sure the connection closes when method returns.
+	//defer conn.Close()
+
+	// Create decoder to the connection to receive the message.
+	dec := gob.NewDecoder(conn)
+
+	// Read the message from the connection through the decoder.
+	var message protocol.Message
+	err := dec.Decode(&message)
+
+	// Error check for receiving message.
+	if err != nil {
+		err := fmt.Errorf("%s %s. %s: %s", "Could not decode message from peer at", conn.RemoteAddr(), "Error", err)
+		panic(err)
+	}
+
+	operation := message.GetOperation()
+	fr := ts.funReg
+
+	switch operation {
+	case protocol.PutRequest:
+		// Body of message must be a tuple.
+		tuple := message.GetBody().(container.Tuple)
+		funcDecode(fr, &tuple)
+		ts.handlePut(conn, tuple)
+	case protocol.PutPRequest:
+		// Body of message must be a tuple.
+		tuple := message.GetBody().(container.Tuple)
+		funcDecode(fr, &tuple)
+		ts.handlePutP(tuple)
+	case protocol.PutAggRequest:
+		// Body of message must be a function and a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handlePutAgg(conn, template)
+	case protocol.GetRequest:
+		// Body of message must be a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleGet(conn, template)
+	case protocol.GetPRequest:
+		// Body of message must be a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleGetP(conn, template)
+	case protocol.GetAllRequest:
+		// Body of message must be a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleGetAll(conn, template)
+	case protocol.GetAggRequest:
+		// Body of message must be a function and a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleGetAgg(conn, template)
+	case protocol.SizeRequest:
+		ts.handleSize(conn)
+	case protocol.QueryRequest:
+		// Body of message must be a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleQuery(conn, template)
+	case protocol.QueryPRequest:
+		// Body of message must be a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleQueryP(conn, template)
+	case protocol.QueryAllRequest:
+		// Body of message must be a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleQueryAll(conn, template)
+	case protocol.QueryAggRequest:
+		// Body of message must be a function and a template.
+		template := message.GetBody().(container.Template)
+		funcDecode(fr, &template)
+		ts.handleQueryAgg(conn, template)
+	default:
+		err := fmt.Errorf("%s %s. %s: %s", "Unsupported operation requested by peer at", conn.RemoteAddr(), "Message sent", message)
+		panic(err)
+	}
+
+	return
+}
+
 // Size return the number of tuples in the tuple space.
 func (ts *TupleSpace) Size() int {
 	return len(ts.tuples)
@@ -64,20 +191,20 @@ func (ts *TupleSpace) Size() int {
 
 // put will call the nonblocking put method and places a success response on
 // the response channel.
-func (ts *TupleSpace) put(t *shared.Tuple, response chan<- bool) {
+func (ts *TupleSpace) put(t *container.Tuple, response chan<- bool) {
 	ts.putP(t)
 	response <- true
 }
 
 // putP will put a lock on the tuple space add the tuple to the list of
 // tuples and unlock the list.
-func (ts *TupleSpace) putP(t *shared.Tuple) {
+func (ts *TupleSpace) putP(t *container.Tuple) {
 	ts.muWaitingClients.Lock()
 
 	// Perform a copy of the tuple.
 	fc := make([]interface{}, t.Length())
 	copy(fc, t.Fields())
-	tc := shared.CreateTuple(fc...)
+	tc := container.NewTuple(fc...)
 
 	fr := (*ts).funReg
 
@@ -99,7 +226,9 @@ func (ts *TupleSpace) putP(t *shared.Tuple) {
 			ts.removeClientAt(i)
 			i--
 			clientOperation := waitingClient.GetOperation()
-			if clientOperation == protocol.GetRequest || clientOperation == protocol.GetAggRequest {
+			if clientOperation == protocol.GetRequest ||
+				clientOperation == protocol.GetAggRequest ||
+				clientOperation == protocol.PutAggRequest {
 				// Unlock before exiting the method.
 				ts.muWaitingClients.Unlock()
 				return
@@ -123,12 +252,12 @@ func (ts *TupleSpace) removeClientAt(i int) {
 
 // get will find the first tuple that matches the template temp and remove the
 // tuple from the tuple space.
-func (ts *TupleSpace) get(temp shared.Template, response chan<- *shared.Tuple) {
+func (ts *TupleSpace) get(temp container.Template, response chan<- *container.Tuple) {
 	ts.findTupleBlocking(temp, response, true)
 }
 
 // query will find the first tuple that matches the template temp.
-func (ts *TupleSpace) query(temp shared.Template, response chan<- *shared.Tuple) {
+func (ts *TupleSpace) query(temp container.Template, response chan<- *container.Tuple) {
 	ts.findTupleBlocking(temp, response, false)
 }
 
@@ -137,7 +266,7 @@ func (ts *TupleSpace) query(temp shared.Template, response chan<- *shared.Tuple)
 // The boolean remove will denote if the found tuple should be removed or not
 // from the tuple space.
 // The found tuple is written to the channel response.
-func (ts *TupleSpace) findTupleBlocking(temp shared.Template, response chan<- *shared.Tuple, remove bool) {
+func (ts *TupleSpace) findTupleBlocking(temp container.Template, response chan<- *container.Tuple, remove bool) {
 	// Seach for the a tuple in the tuple space.
 	tuple := ts.findTuple(temp, remove)
 
@@ -163,12 +292,12 @@ func (ts *TupleSpace) addNewClient(client protocol.WaitingClient) {
 
 // getP will find the first tuple that matches the template temp and remove the
 // tuple from the tuple space.
-func (ts *TupleSpace) getP(temp shared.Template, response chan<- *shared.Tuple) {
+func (ts *TupleSpace) getP(temp container.Template, response chan<- *container.Tuple) {
 	ts.findTupleNonblocking(temp, response, true)
 }
 
 // queryP will find the first tuple that matches the template temp.
-func (ts *TupleSpace) queryP(temp shared.Template, response chan<- *shared.Tuple) {
+func (ts *TupleSpace) queryP(temp container.Template, response chan<- *container.Tuple) {
 	ts.findTupleNonblocking(temp, response, false)
 }
 
@@ -176,7 +305,7 @@ func (ts *TupleSpace) queryP(temp shared.Template, response chan<- *shared.Tuple
 // The boolean remove will denote if the tuple should be removed or not from
 // the tuple space.
 // The found tuple is written to the channel response.
-func (ts *TupleSpace) findTupleNonblocking(temp shared.Template, response chan<- *shared.Tuple, remove bool) {
+func (ts *TupleSpace) findTupleNonblocking(temp container.Template, response chan<- *container.Tuple, remove bool) {
 	tuplePtr := ts.findTuple(temp, remove)
 	response <- tuplePtr
 }
@@ -187,7 +316,7 @@ func (ts *TupleSpace) findTupleNonblocking(temp shared.Template, response chan<-
 // The boolean remove will denote if the tuple should be removed or not from
 // the tuple space.
 // If a match is found a pointer to the tuple is returned, otherwise nil is.
-func (ts *TupleSpace) findTuple(temp shared.Template, remove bool) *shared.Tuple {
+func (ts *TupleSpace) findTuple(temp container.Template, remove bool) *container.Tuple {
 	if remove {
 		ts.muTuples.Lock()
 		defer ts.muTuples.Unlock()
@@ -200,7 +329,7 @@ func (ts *TupleSpace) findTuple(temp shared.Template, remove bool) *shared.Tuple
 		// Perform a copy of the tuple.
 		fc := make([]interface{}, t.Length())
 		copy(fc, t.Fields())
-		tc := shared.CreateTuple(fc...)
+		tc := container.NewTuple(fc...)
 
 		if tc.Match(temp) {
 			if remove {
@@ -215,12 +344,12 @@ func (ts *TupleSpace) findTuple(temp shared.Template, remove bool) *shared.Tuple
 }
 
 // getAll will return and remove every tuple from the tuple space.
-func (ts *TupleSpace) getAll(temp shared.Template, response chan<- []shared.Tuple) {
+func (ts *TupleSpace) getAll(temp container.Template, response chan<- []container.Tuple) {
 	ts.findAllTuples(temp, response, true)
 }
 
 // queryAll will return every tuple from the tuple space.
-func (ts *TupleSpace) queryAll(temp shared.Template, response chan<- []shared.Tuple) {
+func (ts *TupleSpace) queryAll(temp container.Template, response chan<- []container.Tuple) {
 	ts.findAllTuples(temp, response, false)
 }
 
@@ -228,7 +357,7 @@ func (ts *TupleSpace) queryAll(temp shared.Template, response chan<- []shared.Tu
 // The boolean remove will denote if the tuple should be removed or not from
 // the tuple space.
 // NOTE: an empty list of tuples is a legal return value.
-func (ts *TupleSpace) findAllTuples(temp shared.Template, response chan<- []shared.Tuple, remove bool) {
+func (ts *TupleSpace) findAllTuples(temp container.Template, response chan<- []container.Tuple, remove bool) {
 	if remove {
 		ts.muTuples.Lock()
 		defer ts.muTuples.Unlock()
@@ -236,14 +365,15 @@ func (ts *TupleSpace) findAllTuples(temp shared.Template, response chan<- []shar
 		ts.muTuples.RLock()
 		defer ts.muTuples.RUnlock()
 	}
-	var tuples []shared.Tuple
+
+	var tuples []container.Tuple
 	var removeIndex []int
 	// Go through tuple space and collects matching tuples
 	for i, t := range ts.tuples {
 		// Perform a copy of the tuple.
 		fc := make([]interface{}, t.Length())
 		copy(fc, t.Fields())
-		tc := shared.CreateTuple(fc...)
+		tc := container.NewTuple(fc...)
 
 		if tc.Match(temp) {
 			if remove {
@@ -263,7 +393,7 @@ func (ts *TupleSpace) findAllTuples(temp shared.Template, response chan<- []shar
 
 // clearTupleSpace will reinitialise the list of tuples in the tuple space.
 func (ts *TupleSpace) clearTupleSpace() {
-	ts.tuples = []shared.Tuple{}
+	ts.tuples = []container.Tuple{}
 }
 
 // removeTupleAt will removeTupleAt the tuple in the tuples space at index i.
@@ -275,19 +405,19 @@ func (ts *TupleSpace) removeTupleAt(i int) {
 
 // returnUnmatched stores unmatched tuples back to the tuple space ts given an action a.
 // returnUnmatched returns true if tuples have been back to the tuple space, and false otherwise.
-func (ts *TupleSpace) returnUnmatched(a *policy.Action, unmatched []shared.Intertuple) (b bool) {
+func (ts *TupleSpace) returnUnmatched(a *policy.Action, unmatched []container.Intertuple) (b bool) {
 	var spc Space
-	b = a != nil && (*a).Sign.Func != shared.NewSignature(1, spc.QueryAgg)
+	b = a != nil && (*a).Sign.Func != container.NewSignature(1, spc.QueryAgg)
 
 	if b {
-		var tuple shared.Tuple
+		var tuple container.Tuple
 		for _, ut := range unmatched {
 			switch ut.(type) {
-			case *shared.Tuple:
-				tuple = *(ut.(*shared.Tuple))
+			case *container.Tuple:
+				tuple = *(ut.(*container.Tuple))
 				ts.putP(&tuple)
-			case *shared.LabelledTuple:
-				tuple = shared.Tuple(*(ut.(*shared.LabelledTuple)))
+			case *container.LabelledTuple:
+				tuple = container.Tuple(*(ut.(*container.LabelledTuple)))
 				ts.putP(&tuple)
 			}
 		}
@@ -296,141 +426,17 @@ func (ts *TupleSpace) returnUnmatched(a *policy.Action, unmatched []shared.Inter
 	return b
 }
 
-// Listen will listen and accept all incoming connections. Once a connection has
-// been established, the connection is passed on to the handler.
-func (ts *TupleSpace) Listen() {
-	defer handleRecover(ts.Listen)
-
-	var listener net.Listener
-	var err error
-
-	proto := "tcp4"
-
-	listener, err = net.Listen(proto, ts.port)
-
-	if err != nil {
-		err := fmt.Sprintf("%s %s. %s: %s", "Could not create listener at ", ts.port, "Error", err)
-		panic(err)
-	}
-
-	defer listener.Close()
-
-	var conn net.Conn
-	for {
-		conn, err = listener.Accept()
-
-		if err != nil {
-			if conn != nil {
-				conn.Close()
-			}
-
-			continue
-		}
-
-		go ts.handle(conn)
-	}
-}
-
-// handle will read and decode the message from the connection.
-// The decoded message will be passed on to the respective method.
-func (ts *TupleSpace) handle(conn net.Conn) {
-	defer handleRecover(ts.handle)
-
-	// Make sure the connection closes when method returns.
-	defer conn.Close()
-
-	// Create decoder to the connection to receive the message.
-	dec := gob.NewDecoder(conn)
-
-	// Read the message from the connection through the decoder.
-	var message protocol.Message
-	err := dec.Decode(&message)
-
-	// Error check for receiving message.
-	if err != nil {
-		err := fmt.Sprintf("%s %s. %s: %s", "Could not decode message from peer at", conn.RemoteAddr(), "Error", err)
-		panic(err)
-	}
-
-	operation := message.GetOperation()
-	fr := ts.funReg
-
-	switch operation {
-	case protocol.PutRequest:
-		// Body of message must be a tuple.
-		tuple := message.GetBody().(shared.Tuple)
-		funcDecode(fr, &tuple)
-		ts.handlePut(conn, tuple)
-	case protocol.PutPRequest:
-		// Body of message must be a tuple.
-		tuple := message.GetBody().(shared.Tuple)
-		funcDecode(fr, &tuple)
-		ts.handlePutP(tuple)
-	case protocol.PutAggRequest:
-		// Body of message must be a function and a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handlePutAgg(conn, template)
-	case protocol.GetRequest:
-		// Body of message must be a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleGet(conn, template)
-	case protocol.GetPRequest:
-		// Body of message must be a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleGetP(conn, template)
-	case protocol.GetAllRequest:
-		// Body of message must be a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleGetAll(conn, template)
-	case protocol.GetAggRequest:
-		// Body of message must be a function and a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleGetAgg(conn, template)
-	case protocol.SizeRequest:
-		ts.handleSize(conn)
-	case protocol.QueryRequest:
-		// Body of message must be a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleQuery(conn, template)
-	case protocol.QueryPRequest:
-		// Body of message must be a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleQueryP(conn, template)
-	case protocol.QueryAllRequest:
-		// Body of message must be a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleQueryAll(conn, template)
-	case protocol.QueryAggRequest:
-		// Body of message must be a function and a template.
-		template := message.GetBody().(shared.Template)
-		funcDecode(fr, &template)
-		ts.handleQueryAgg(conn, template)
-	default:
-		err := fmt.Sprintf("%s %s. %s: %s", "Unsupported operation requested by peer at", conn.RemoteAddr(), "Message sent", message)
-		panic(err)
-	}
-
-	return
-}
-
 // handlePut is a blocking method.
 // The method will place the tuple t in the tuple space ts.
 // The method will send a boolean value to the connection conn to tell whether
 // or not the placement succeeded
-func (ts *TupleSpace) handlePut(conn net.Conn, t shared.Tuple) {
+func (ts *TupleSpace) handlePut(conn net.Conn, t container.Tuple) {
 	defer handleRecover(ts.handlePut)
 
 	readChannel := make(chan bool)
 	go ts.put(&t, readChannel)
 	result := <-readChannel
+	close(readChannel)
 
 	enc := gob.NewEncoder(conn)
 
@@ -443,20 +449,20 @@ func (ts *TupleSpace) handlePut(conn net.Conn, t shared.Tuple) {
 
 // handlePutP is a nonblocking method.
 // The method will try and place the tuple t in e tuple space ts.
-func (ts *TupleSpace) handlePutP(t shared.Tuple) {
+func (ts *TupleSpace) handlePutP(t container.Tuple) {
 	go ts.putP(&t)
 }
 
 // handlePutAgg is a non-blocking method that will return an aggregated tuple from the tuple
 // space and put it back into the tuple space.
-func (ts *TupleSpace) handlePutAgg(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handlePutAgg(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handlePutAgg)
 
-	fun := (temp.GetFieldAt(0)).(func(...shared.Intertuple) shared.Intertuple)
+	fun := (temp.GetFieldAt(0)).(func(...container.Intertuple) container.Intertuple)
 
-	spc := new(Space)
-	var cp *policy.ComposablePolicy
-	var ap *policy.AggregationPolicy
+	var spc Space
+	var cp *policy.Composable
+	var ap *policy.Aggregation
 	var a *policy.Action
 
 	// Find an applicable policy through the current action and template.
@@ -479,9 +485,10 @@ func (ts *TupleSpace) handlePutAgg(conn net.Conn, temp shared.Template) {
 
 	template := templateTransform(ap, fields)
 
-	readChannel := make(chan []shared.Tuple)
+	readChannel := make(chan []container.Tuple)
 	go ts.getAll(template, readChannel)
 	tuples := <-readChannel
+	close(readChannel)
 
 	matched, unmatched := matchTransform(ap, cp, tuples)
 
@@ -494,17 +501,17 @@ func (ts *TupleSpace) handlePutAgg(conn net.Conn, temp shared.Template) {
 
 	result = resultTransform(ap, result)
 
-	var tuple shared.Tuple
+	var tuple container.Tuple
 	if ap != nil {
 		switch result.(type) {
-		case *shared.Tuple:
-			tuple = *(result.(*shared.Tuple))
-		case *shared.LabelledTuple:
-			tuple = shared.Tuple(*(result.(*shared.LabelledTuple)))
+		case *container.Tuple:
+			tuple = *(result.(*container.Tuple))
+		case *container.LabelledTuple:
+			tuple = container.Tuple(*(result.(*container.LabelledTuple)))
 		}
 		ts.putP(&tuple)
 	} else {
-		tuple = *(result.(*shared.Tuple))
+		tuple = *(result.(*container.Tuple))
 	}
 
 	fr := (*ts).funReg
@@ -515,15 +522,15 @@ func (ts *TupleSpace) handlePutAgg(conn net.Conn, temp shared.Template) {
 
 	if ap != nil {
 		switch result.(type) {
-		case *shared.Tuple:
-			tuple = *(result.(*shared.Tuple))
-		case *shared.LabelledTuple:
-			tuple = shared.Tuple(*(result.(*shared.LabelledTuple)))
+		case *container.Tuple:
+			tuple = *(result.(*container.Tuple))
+		case *container.LabelledTuple:
+			tuple = container.Tuple(*(result.(*container.LabelledTuple)))
 		}
 	} else if cp != nil {
-		tuple = shared.CreateTuple(nil)
+		tuple = container.NewTuple(nil)
 	} else {
-		tuple = *(result.(*shared.Tuple))
+		tuple = *(result.(*container.Tuple))
 	}
 
 	enc := gob.NewEncoder(conn)
@@ -538,12 +545,13 @@ func (ts *TupleSpace) handlePutAgg(conn net.Conn, temp shared.Template) {
 
 // handleGet is a blocking method.
 // It will find a tuple matching the template temp and return it.
-func (ts *TupleSpace) handleGet(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleGet(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleGet)
 
-	readChannel := make(chan *shared.Tuple)
+	readChannel := make(chan *container.Tuple)
 	go ts.get(temp, readChannel)
 	resultTuplePtr := <-readChannel
+	close(readChannel)
 
 	fr := (*ts).funReg
 	if fr != nil && resultTuplePtr != nil {
@@ -565,12 +573,13 @@ func (ts *TupleSpace) handleGet(conn net.Conn, temp shared.Template) {
 // from the tuple space.
 // As it may not find it, the method will send a boolean as well as the tuple
 // to the connection conn.
-func (ts *TupleSpace) handleGetP(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleGetP(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleGetP)
 
-	readChannel := make(chan *shared.Tuple)
+	readChannel := make(chan *container.Tuple)
 	go ts.getP(temp, readChannel)
 	resultTuplePtr := <-readChannel
+	close(readChannel)
 
 	fr := (*ts).funReg
 	if fr != nil && resultTuplePtr != nil {
@@ -581,7 +590,7 @@ func (ts *TupleSpace) handleGetP(conn net.Conn, temp shared.Template) {
 	enc := gob.NewEncoder(conn)
 
 	if resultTuplePtr == nil {
-		result := []interface{}{false, shared.CreateTuple()}
+		result := []interface{}{false, container.NewTuple()}
 
 		err := enc.Encode(result)
 
@@ -601,12 +610,13 @@ func (ts *TupleSpace) handleGetP(conn net.Conn, temp shared.Template) {
 
 // handleGetAll is a nonblocking method that will remove all tuples from the tuple
 // space and send them in a list through the connection conn.
-func (ts *TupleSpace) handleGetAll(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleGetAll(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleGetAll)
 
-	readChannel := make(chan []shared.Tuple)
+	readChannel := make(chan []container.Tuple)
 	go ts.getAll(temp, readChannel)
 	tupleList := <-readChannel
+	close(readChannel)
 
 	fr := (*ts).funReg
 	if fr != nil {
@@ -627,14 +637,14 @@ func (ts *TupleSpace) handleGetAll(conn net.Conn, temp shared.Template) {
 
 // handleGetAgg is a blocking method that will return an aggregated tuple from the tuple
 // space in a list.
-func (ts *TupleSpace) handleGetAgg(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleGetAgg(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleGetAgg)
 
-	fun := (temp.GetFieldAt(0)).(func(...shared.Intertuple) shared.Intertuple)
+	fun := (temp.GetFieldAt(0)).(func(...container.Intertuple) container.Intertuple)
 
 	spc := new(Space)
-	var cp *policy.ComposablePolicy
-	var ap *policy.AggregationPolicy
+	var cp *policy.Composable
+	var ap *policy.Aggregation
 	var a *policy.Action
 
 	// Find an applicable policy through the current action and template.
@@ -657,9 +667,10 @@ func (ts *TupleSpace) handleGetAgg(conn net.Conn, temp shared.Template) {
 
 	template := templateTransform(ap, fields)
 
-	readChannel := make(chan []shared.Tuple)
+	readChannel := make(chan []container.Tuple)
 	go ts.getAll(template, readChannel)
 	tuples := <-readChannel
+	close(readChannel)
 
 	matched, unmatched := matchTransform(ap, cp, tuples)
 
@@ -678,18 +689,18 @@ func (ts *TupleSpace) handleGetAgg(conn net.Conn, temp shared.Template) {
 		funcEncode(fr, result)
 	}
 
-	var tuple shared.Tuple
+	var tuple container.Tuple
 	if ap != nil {
 		switch result.(type) {
-		case *shared.Tuple:
-			tuple = *(result.(*shared.Tuple))
-		case *shared.LabelledTuple:
-			tuple = shared.Tuple(*(result.(*shared.LabelledTuple)))
+		case *container.Tuple:
+			tuple = *(result.(*container.Tuple))
+		case *container.LabelledTuple:
+			tuple = container.Tuple(*(result.(*container.LabelledTuple)))
 		}
 	} else if cp != nil {
-		tuple = shared.CreateTuple(nil)
+		tuple = container.NewTuple(nil)
 	} else {
-		tuple = *(result.(*shared.Tuple))
+		tuple = *(result.(*container.Tuple))
 	}
 
 	enc := gob.NewEncoder(conn)
@@ -724,12 +735,13 @@ func (ts *TupleSpace) handleSize(conn net.Conn) {
 // handleQuery is a blocking method.
 // It will find a tuple matching the template temp.
 // The found tuple will be send to the connection conn.
-func (ts *TupleSpace) handleQuery(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleQuery(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleQuery)
 
-	readChannel := make(chan *shared.Tuple)
+	readChannel := make(chan *container.Tuple)
 	go ts.query(temp, readChannel)
 	resultTuplePtr := <-readChannel
+	close(readChannel)
 
 	fr := (*ts).funReg
 	if fr != nil && resultTuplePtr != nil {
@@ -751,12 +763,13 @@ func (ts *TupleSpace) handleQuery(conn net.Conn, temp shared.Template) {
 // handleQueryP is a nonblocking method.
 // It will try to find a tuple matching the template temp.
 // As it may not find it, the method returns a boolean as well as the tuple.
-func (ts *TupleSpace) handleQueryP(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleQueryP(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleQueryP)
 
-	readChannel := make(chan *shared.Tuple)
+	readChannel := make(chan *container.Tuple)
 	go ts.queryP(temp, readChannel)
 	resultTuplePtr := <-readChannel
+	close(readChannel)
 
 	fr := (*ts).funReg
 	if fr != nil && resultTuplePtr != nil {
@@ -767,7 +780,7 @@ func (ts *TupleSpace) handleQueryP(conn net.Conn, temp shared.Template) {
 	enc := gob.NewEncoder(conn)
 
 	if resultTuplePtr == nil {
-		result := []interface{}{false, shared.CreateTuple()}
+		result := []interface{}{false, container.NewTuple()}
 
 		err := enc.Encode(result)
 
@@ -789,12 +802,13 @@ func (ts *TupleSpace) handleQueryP(conn net.Conn, temp shared.Template) {
 
 // handleQueryAll is a blocking method that will return all tuples from the tuple
 // space in a list.
-func (ts *TupleSpace) handleQueryAll(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleQueryAll(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleQueryAll)
 
-	readChannel := make(chan []shared.Tuple)
+	readChannel := make(chan []container.Tuple)
 	go ts.queryAll(temp, readChannel)
 	tupleList := <-readChannel
+	close(readChannel)
 
 	fr := (*ts).funReg
 	if fr != nil {
@@ -815,14 +829,14 @@ func (ts *TupleSpace) handleQueryAll(conn net.Conn, temp shared.Template) {
 
 // handleQueryAgg is a blocking method that will return an aggregated tuple from the tuple
 // space in a list.
-func (ts *TupleSpace) handleQueryAgg(conn net.Conn, temp shared.Template) {
+func (ts *TupleSpace) handleQueryAgg(conn net.Conn, temp container.Template) {
 	defer handleRecover(ts.handleQueryAgg)
 
-	fun := (temp.GetFieldAt(0)).(func(...shared.Intertuple) shared.Intertuple)
+	fun := (temp.GetFieldAt(0)).(func(...container.Intertuple) container.Intertuple)
 
 	spc := new(Space)
-	var cp *policy.ComposablePolicy
-	var ap *policy.AggregationPolicy
+	var cp *policy.Composable
+	var ap *policy.Aggregation
 
 	// Find an applicable policy through the current action and template.
 	cp = (*ts).pol
@@ -841,9 +855,10 @@ func (ts *TupleSpace) handleQueryAgg(conn net.Conn, temp shared.Template) {
 
 	template := templateTransform(ap, fields)
 
-	readChannel := make(chan []shared.Tuple)
+	readChannel := make(chan []container.Tuple)
 	go ts.queryAll(template, readChannel)
 	tuples := <-readChannel
+	close(readChannel)
 
 	matched, _ := matchTransform(ap, cp, tuples)
 
@@ -857,18 +872,18 @@ func (ts *TupleSpace) handleQueryAgg(conn net.Conn, temp shared.Template) {
 		funcEncode(fr, result)
 	}
 
-	var tuple shared.Tuple
+	var tuple container.Tuple
 	if ap != nil {
 		switch result.(type) {
-		case *shared.Tuple:
-			tuple = *(result.(*shared.Tuple))
-		case *shared.LabelledTuple:
-			tuple = shared.Tuple(*(result.(*shared.LabelledTuple)))
+		case *container.Tuple:
+			tuple = *(result.(*container.Tuple))
+		case *container.LabelledTuple:
+			tuple = container.Tuple(*(result.(*container.LabelledTuple)))
 		}
 	} else if cp != nil {
-		tuple = shared.CreateTuple(nil)
+		tuple = container.NewTuple(nil)
 	} else {
-		tuple = *(result.(*shared.Tuple))
+		tuple = *(result.(*container.Tuple))
 	}
 
 	enc := gob.NewEncoder(conn)
@@ -880,15 +895,15 @@ func (ts *TupleSpace) handleQueryAgg(conn net.Conn, temp shared.Template) {
 }
 
 // aggregate performs the aggregation of the tuple given an aggregation function fun and tuples ts.
-func aggregate(ap *policy.AggregationPolicy, fun interface{}, ts []shared.Intertuple) (result shared.Intertuple) {
+func aggregate(ap *policy.Aggregation, fun interface{}, ts []container.Intertuple) (result container.Intertuple) {
 	b := fun != nil
 
 	if b {
-		fun := fun.(func(...shared.Intertuple) shared.Intertuple)
+		fun := fun.(func(...container.Intertuple) container.Intertuple)
 
 		if len(ts) > 1 {
-			binfun := func(x shared.Intertuple, y shared.Intertuple) shared.Intertuple {
-				params := []shared.Intertuple{x, y}
+			binfun := func(x container.Intertuple, y container.Intertuple) container.Intertuple {
+				params := []container.Intertuple{x, y}
 				return fun(params...)
 			}
 
@@ -916,7 +931,7 @@ func aggregate(ap *policy.AggregationPolicy, fun interface{}, ts []shared.Intert
 }
 
 // templateTransform rewrites a template given an aggregation policy ap.
-func templateTransform(ap *policy.AggregationPolicy, fields []interface{}) (template shared.Template) {
+func templateTransform(ap *policy.Aggregation, fields []interface{}) (template container.Template) {
 	var trans *policy.Transformation
 	if ap != nil {
 		trs := ap.AggRule.Transformations()
@@ -927,17 +942,17 @@ func templateTransform(ap *policy.AggregationPolicy, fields []interface{}) (temp
 		val, err := trans.Apply(fields...)
 
 		if err == nil {
-			template = val.(shared.Template)
+			template = val.(container.Template)
 		}
 	} else {
-		template = shared.CreateTemplate(fields...)
+		template = container.NewTemplate(fields...)
 	}
 
 	return template
 }
 
 // matchTransform takes an actions label and an aggregation policy ap and applies the policy to the matched tuples.
-func matchTransform(ap *policy.AggregationPolicy, cp *policy.ComposablePolicy, tuples []shared.Tuple) (mt []shared.Intertuple, ut []shared.Intertuple) {
+func matchTransform(ap *policy.Aggregation, cp *policy.Composable, tuples []container.Tuple) (mt []container.Intertuple, ut []container.Intertuple) {
 	var trans *policy.Transformation
 	if ap != nil && cp != nil {
 		trs := ap.AggRule.Transformations()
@@ -950,7 +965,7 @@ func matchTransform(ap *policy.AggregationPolicy, cp *policy.ComposablePolicy, t
 		uts := make([]int, 0, len(tuples))
 		for i := range tuples {
 			t := tuples[i]
-			labelled := t.Length() >= 1 && reflect.TypeOf(t.GetFieldAt(0)) == reflect.TypeOf(shared.Labels{})
+			labelled := t.Length() >= 1 && reflect.TypeOf(t.GetFieldAt(0)) == reflect.TypeOf(container.Labels{})
 			if labelled {
 				lts = append(lts, i)
 			} else {
@@ -965,8 +980,8 @@ func matchTransform(ap *policy.AggregationPolicy, cp *policy.ComposablePolicy, t
 		nts := make([]int, 0, len(lts))
 		for _, i := range lts {
 			t := tuples[i]
-			lt := shared.LabelledTuple(t)
-			lp := shared.NewLabels(al)
+			lt := container.LabelledTuple(t)
+			lp := container.NewLabels(al)
 			tupleLabels, labelsMatch := lt.MatchLabels(lp)
 
 			// The label associated to the aggregation policy with the matching action a
@@ -992,8 +1007,8 @@ func matchTransform(ap *policy.AggregationPolicy, cp *policy.ComposablePolicy, t
 			}
 		}
 
-		mt = make([]shared.Intertuple, len(uts)+len(ets))
-		ut = make([]shared.Intertuple, len(nts))
+		mt = make([]container.Intertuple, len(uts)+len(ets))
+		ut = make([]container.Intertuple, len(nts))
 
 		// Transform unlabelled tuples by applying matching transformation.
 		j := 0
@@ -1001,12 +1016,12 @@ func matchTransform(ap *policy.AggregationPolicy, cp *policy.ComposablePolicy, t
 			ut := tuples[i]
 			val, err := trans.Apply(ut.Fields()...)
 			if err == nil {
-				lbl := shared.NewLabels(al.DeepCopy())
-				tf := (val.(shared.Intertuple)).Fields()
+				lbl := container.NewLabels(al.DeepCopy())
+				tf := (val.(container.Intertuple)).Fields()
 				ltf := make([]interface{}, len(tf)+1)
 				copy(ltf[:1], []interface{}{lbl})
 				copy(ltf[1:], tf)
-				tlt := shared.NewLabelledTuple(ltf...)
+				tlt := container.NewLabelledTuple(ltf...)
 				mt[j] = &tlt
 				j++
 			}
@@ -1014,21 +1029,21 @@ func matchTransform(ap *policy.AggregationPolicy, cp *policy.ComposablePolicy, t
 
 		// Transform labelled tuples by applying matching transformation.
 		for _, i := range ets {
-			ult := shared.LabelledTuple(tuples[i])
+			ult := container.LabelledTuple(tuples[i])
 			val, err := trans.Apply(ult.Fields()...)
 			if err == nil {
-				lbl := shared.NewLabels(al.DeepCopy())
-				tf := (val.(shared.Intertuple)).Fields()
+				lbl := container.NewLabels(al.DeepCopy())
+				tf := (val.(container.Intertuple)).Fields()
 				ltf := make([]interface{}, len(tf)+1)
 				copy(ltf[:1], []interface{}{lbl})
 				copy(ltf[1:], tf)
-				tlt := shared.NewLabelledTuple(ltf...)
+				tlt := container.NewLabelledTuple(ltf...)
 				mt[j] = &tlt
 				j++
 			}
 		}
 	} else {
-		mt = make([]shared.Intertuple, 0, len(tuples))
+		mt = make([]container.Intertuple, 0, len(tuples))
 		for i := range tuples {
 			mt = append(mt, &(tuples[i]))
 		}
@@ -1038,7 +1053,7 @@ func matchTransform(ap *policy.AggregationPolicy, cp *policy.ComposablePolicy, t
 }
 
 // resultTransform rewrites a tuple result given an aggregation policy ap.
-func resultTransform(ap *policy.AggregationPolicy, res shared.Intertuple) (mod shared.Intertuple) {
+func resultTransform(ap *policy.Aggregation, res container.Intertuple) (mod container.Intertuple) {
 	var trans *policy.Transformation
 	if ap != nil {
 		trs := ap.AggRule.Transformations()
@@ -1049,12 +1064,12 @@ func resultTransform(ap *policy.AggregationPolicy, res shared.Intertuple) (mod s
 		val, err := trans.Apply(res.Fields()...)
 		if err == nil {
 			lbl := ap.Label()
-			lbls := shared.NewLabels((&lbl).DeepCopy())
-			tf := (val.(shared.Intertuple)).Fields()
+			lbls := container.NewLabels((&lbl).DeepCopy())
+			tf := (val.(container.Intertuple)).Fields()
 			ltf := make([]interface{}, len(tf)+1)
 			copy(ltf[:1], []interface{}{lbls})
 			copy(ltf[1:], tf)
-			tlt := shared.NewLabelledTuple(ltf...)
+			tlt := container.NewLabelledTuple(ltf...)
 			mod = &tlt
 		}
 	} else {
@@ -1062,6 +1077,22 @@ func resultTransform(ap *policy.AggregationPolicy, res shared.Intertuple) (mod s
 	}
 
 	return mod
+}
+
+// transformToTuple takes an tuple interface and converts it to a tuple.
+func transformToTuple(it container.Intertuple, ap *policy.Aggregation) (t container.Tuple) {
+	if ap != nil {
+		switch it.(type) {
+		case *container.Tuple:
+			t = *(it.(*container.Tuple))
+		case *container.LabelledTuple:
+			t = container.Tuple(*(it.(*container.LabelledTuple)))
+		}
+	} else {
+		t = *(it.(*container.Tuple))
+	}
+
+	return t
 }
 
 // funcEncode performs encoding of functions in a tuple or a template t.
@@ -1073,7 +1104,7 @@ func funcEncode(reg *function.Registry, i interface{}) {
 	}
 
 	if fr != nil {
-		t := i.(function.Applier)
+		t := i.(container.Applier)
 
 		// Assume that any string field might contain a reference to a function.
 		// TODO: Encapsulate the enconding of functions better than sending strings.
@@ -1106,7 +1137,7 @@ func funcDecode(reg *function.Registry, i interface{}) {
 	}
 
 	if fr != nil {
-		t := i.(function.Applier)
+		t := i.(container.Applier)
 
 		// Assume that any string field might contain a reference to a function.
 		// TODO: The decoding mechanism of functions might convert any tuples that contain namespace strings.
@@ -1136,6 +1167,6 @@ func funcDecode(reg *function.Registry, i interface{}) {
 
 func handleRecover(caller interface{}) {
 	if error := recover(); error != nil {
-		fmt.Printf("%s: %s: \n\t%s: %s.\n", "gospace", function.FuncName(caller), "Recovered from error", error)
+		fmt.Printf("%s: %s: \n\t%s: %s.\n", "gospace", function.Name(caller), "Recovered from error", error)
 	}
 }
