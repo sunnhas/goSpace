@@ -2,11 +2,12 @@ package policy
 
 import (
 	"fmt"
-	"github.com/pspaces/gospace/container"
-	"github.com/pspaces/gospace/function"
 	"math"
 	"reflect"
 	"strings"
+
+	"github.com/pspaces/gospace/container"
+	"github.com/pspaces/gospace/function"
 )
 
 // Action is a structure defining an operation.

@@ -26,7 +26,7 @@ func NewLabelledTuple(fields ...interface{}) (lt LabelledTuple) {
 			lblsc := make(Labels)
 			for _, v := range lbls.Labelling() {
 				lbl := lbls.Retrieve(v)
-				lblsc.Add(NewLabel(lbl.Id()))
+				lblsc.Add(NewLabel(lbl.ID()))
 			}
 			lbls = lblsc
 		}

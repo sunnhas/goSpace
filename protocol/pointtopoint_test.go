@@ -16,7 +16,7 @@ func TestCreatePointToPoint(t *testing.T) {
 	actualIP := "192.168.0.0"
 	actualPort := 8080
 	actualAddress := strings.Join([]string{actualIP, strconv.Itoa(actualPort)}, ":")
-	actualPointToPoint := PointToPoint{actualName, actualAddress, nil}
+	actualPointToPoint := &PointToPoint{actualName, actualAddress, nil, nil}
 
 	pointToPointsEqual := reflect.DeepEqual(testPointToPoint, actualPointToPoint)
 

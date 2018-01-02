@@ -3,7 +3,6 @@ package space
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -26,7 +25,6 @@ var (
 // tsAltLog logs errors occuring in this file.
 func tsAltLog(fun interface{}, e *error) {
 	if *e != nil {
-		fmt.Print(&tsAltBuf)
 		tsAltLogger.Printf("%s: %s\n", function.Name(fun), *e)
 	}
 }
@@ -38,10 +36,6 @@ func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoi
 	u, err := uri.NewSpaceURI(url)
 
 	if err == nil {
-		muTuples := new(sync.RWMutex)
-		muWaitingClients := new(sync.Mutex)
-		tuples := []container.Tuple{}
-
 		// TODO: Exchange capabilities instead and
 		// TODO: make a mechanism capable of doing that.
 		if function.GlobalRegistry == nil {
@@ -50,27 +44,57 @@ func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoi
 		}
 		funcReg := *function.GlobalRegistry
 
-		port := strings.Join([]string{"", u.Port()}, ":")
+		// TODO: Create a better condition if a hosts name resolves to a local address.
+		ips, err := net.LookupIP(u.Hostname())
 
-		ts = &TupleSpace{
-			muTuples:         muTuples,
-			muWaitingClients: muWaitingClients,
-			tuples:           tuples,
-			pol:              nil,
-			funReg:           &funcReg,
-			port:             port,
+		// Test if we are connecting locally to avoid TCP port issue.
+		localhost := false
+		for _, a := range ips {
+			localhost = localhost || a.IsLoopback()
 		}
 
-		if len(cp) == 1 {
-			(*ts).pol = cp[0]
+		l, lerr := net.Listen("tcp4", ":"+u.Port())
+		if lerr == nil {
+			l.Close()
 		}
 
-		go ts.Listen()
+		// TODO: Embrace the following hack, and remove it with a better architecture.
+		connc := make(chan *net.Conn)
+		if err == nil && lerr == nil {
+			muTuples := new(sync.RWMutex)
+			muWaitingClients := new(sync.Mutex)
+			tuples := []container.Tuple{}
 
-		// TODO: This is not the best way of doing it since
-		// TODO: a host can resolve to multiple addresses.
-		// TODO: For now, accept this limitation, and fix it soon.
-		ptp = protocol.CreatePointToPoint(u.Space(), "localhost", u.Port(), &funcReg)
+			addr := strings.Join([]string{u.Hostname(), u.Port()}, ":")
+
+			ts = &TupleSpace{
+				muTuples:         muTuples,
+				muWaitingClients: muWaitingClients,
+				tuples:           tuples,
+				pol:              nil,
+				funReg:           &funcReg,
+				port:             addr,
+				connc:            connc,
+			}
+
+			if len(cp) == 1 {
+				(*ts).pol = cp[0]
+			}
+
+			go ts.Listen()
+
+			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), "0", connc, &funcReg)
+		} else {
+			var port string
+
+			if !localhost {
+				port = u.Port()
+			} else {
+				port = "0"
+			}
+
+			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), port, nil, &funcReg)
+		}
 	} else {
 		ts = nil
 		ptp = nil
@@ -79,8 +103,8 @@ func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoi
 	return ptp, ts
 }
 
-// NewRemoteSpaceAlt creates a representaiton of a remote tuple space.
-func NewRemoteSpaceAlt(url string) (ptp *protocol.PointToPoint, ts *TupleSpace) {
+// NewRemoteSpaceAlt creates a remote representation of a tuple space.
+func NewRemoteSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoint, ts *TupleSpace) {
 	registerTypes()
 
 	u, err := uri.NewSpaceURI(url)
@@ -94,10 +118,35 @@ func NewRemoteSpaceAlt(url string) (ptp *protocol.PointToPoint, ts *TupleSpace) 
 		}
 		funcReg := *function.GlobalRegistry
 
-		// TODO: This is not the best way of doing it since
-		// TODO: a host can resolve to multiple addresses.
-		// TODO: For now, accept this limitation, and fix it soon.
-		ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), u.Port(), &funcReg)
+		// TODO: Create a better condition if a hosts name resolves to a local address.
+		ips, err := net.LookupIP(u.Hostname())
+
+		// Test if we are connecting locally to avoid TCP port issue.
+		localhost := false
+		for _, a := range ips {
+			localhost = localhost || a.IsLoopback()
+		}
+
+		l, lerr := net.Listen("tcp4", ":"+u.Port())
+		if lerr == nil {
+			l.Close()
+		}
+
+		// NOTE: It is not possible to connect to localhost as a remote space
+		// NOTE: or if the port is taken.
+		if localhost && err == nil && lerr == nil {
+			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), "0", nil, &funcReg)
+		} else {
+			var port string
+
+			if lerr == nil {
+				port = u.Port()
+			} else {
+				port = "0"
+			}
+
+			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), port, nil, &funcReg)
+		}
 	} else {
 		ts = nil
 		ptp = nil
@@ -506,12 +555,32 @@ func establishConnection(ptp protocol.PointToPoint, timeout ...time.Duration) (*
 
 	addr := ptp.GetAddress()
 
+	host, _, err := net.SplitHostPort(addr)
+
 	proto := "tcp4"
 
-	if len(timeout) == 0 {
-		conn, err = net.Dial(proto, addr)
-	} else {
-		conn, err = net.DialTimeout(proto, addr, timeout[0])
+	ips, err := net.LookupIP(host)
+
+	if err == nil {
+		// Test if we are connecting locally to avoid TCP port issue.
+		localhost := false
+		for _, a := range ips {
+			localhost = localhost || a.IsLoopback()
+		}
+
+		connc := ptp.GetConnectionChannel()
+
+		if localhost && connc != nil {
+			r, w := net.Pipe()
+			conn = r
+			(*connc) <- &w
+		} else {
+			if len(timeout) == 0 {
+				conn, err = net.Dial(proto, addr)
+			} else {
+				conn, err = net.DialTimeout(proto, addr, timeout[0])
+			}
+		}
 	}
 
 	return &conn, err

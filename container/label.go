@@ -21,7 +21,7 @@ func NewLabel(id string) (l Label) {
 
 // DeepCopy returns a deep copy of the label {
 func (l *Label) DeepCopy() (lc Label) {
-	lc = NewLabel(l.Id())
+	lc = NewLabel(l.ID())
 	return lc
 }
 
@@ -32,8 +32,8 @@ func (l *Label) Equal(m *Label) (e bool) {
 	if l == nil && l == m {
 		e = true
 	} else if l != nil && m != nil {
-		idl := l.Id()
-		idm := m.Id()
+		idl := l.ID()
+		idm := m.ID()
 		e = len(idl) == len(idm)
 		if e {
 			e = idl == idm
@@ -43,8 +43,8 @@ func (l *Label) Equal(m *Label) (e bool) {
 	return e
 }
 
-// Id returns label l's identifier id.
-func (l *Label) Id() (id string) {
+// ID returns label l's identifier id.
+func (l *Label) ID() (id string) {
 	t := Tuple(*l)
 	id = (&t).GetFieldAt(0).(string)
 	return id
@@ -66,6 +66,6 @@ func (l Label) Delimiter() string {
 
 // String returns a print friendly representation of label l.
 func (l Label) String() (s string) {
-	s = fmt.Sprintf("|%s|", l.Id())
+	s = fmt.Sprintf("|%s|", l.ID())
 	return s
 }

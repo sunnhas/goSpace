@@ -38,7 +38,7 @@ func (cp *Composable) Add(ap Aggregation) (b bool) {
 
 		b = !existsLabel
 		if b {
-			lid := l.Id()
+			lid := l.ID()
 			_, existsPolicy := cp.LabelMap.Load(lid)
 
 			b = !existsPolicy
@@ -78,7 +78,7 @@ func (cp *Composable) Retrieve(l container.Label) (ap *Aggregation) {
 	ap = nil
 
 	if b {
-		lid := l.Id()
+		lid := l.ID()
 		val, exists := cp.LabelMap.Load(lid)
 		if exists {
 			pol := val.(Aggregation)
@@ -95,7 +95,7 @@ func (cp *Composable) Delete(l container.Label) (b bool) {
 	b = cp != nil
 
 	if b {
-		lid := l.Id()
+		lid := l.ID()
 		val, exists := cp.LabelMap.Load(lid)
 		if exists {
 			ap := val.(Aggregation)

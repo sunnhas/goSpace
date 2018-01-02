@@ -28,12 +28,16 @@ func TestQueryAndGetUtilities(t *testing.T) {
 	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9051", nil)
 	Put(*ptp, "hello", false)
 	var s string
-	querySucceed := Query(*ptp, &s, false)
+	qtuple, querySucceed := Query(*ptp, &s, false)
+	s = qtuple.GetFieldAt(0).(string)
+
 	if !(ts.Size() == 1) {
 		t.Errorf("Tuple space should have one tuple")
 	}
 	var b bool
-	getSucceed := Get(*ptp, "hello", &b)
+	gtuple, getSucceed := Get(*ptp, "hello", &b)
+	b = gtuple.GetFieldAt(1).(bool)
+
 	if !(ts.Size() == 0) {
 		t.Errorf("Tuple space is not empty")
 	}
@@ -63,24 +67,33 @@ func TestQueryPAndGetPUtilities(t *testing.T) {
 	}
 	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9052", nil)
 	Put(*ptp, "hello", false)
+
 	var s string
-	queryPResult, queryPSucceed := QueryP(*ptp, &s, false)
+	qtuple, queryPResult, queryPSucceed := QueryP(*ptp, &s, false)
+	s = qtuple.GetFieldAt(0).(string)
 	if !(ts.Size() == 1) {
 		t.Errorf("Tuple space should have one tuple")
 	}
+
 	var b bool
-	getPResult, getPSucceed := GetP(*ptp, "hello", &b)
+	gtuple, getPResult, getPSucceed := GetP(*ptp, "hello", &b)
+	b = gtuple.GetFieldAt(1).(bool)
+
 	if !(ts.Size() == 0) {
 		t.Errorf("Tuple space is not empty")
 	}
+
 	if b || !(s == "hello") || !getPSucceed || !queryPSucceed {
 		t.Errorf("GetP or QueryP Failed")
 	}
+
 	if !getPResult || !queryPResult {
 		t.Errorf("GetP or QueryP returned wrong boolean")
 	}
-	queryPResult, queryPSucceed = QueryP(*ptp, &s, false)
-	getPResult, getPSucceed = GetP(*ptp, "hello", &b)
+
+	qtuple, queryPResult, queryPSucceed = QueryP(*ptp, &s, false)
+	gtuple, getPResult, getPSucceed = GetP(*ptp, "hello", &b)
+
 	if getPResult || queryPResult {
 		t.Errorf("GetP or QueryP returned wrong boolean")
 	}

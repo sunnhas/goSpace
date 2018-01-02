@@ -24,9 +24,9 @@ func NewLabels(ll ...Label) (ls Labels) {
 // Add adds a label l to label set ls.
 // Add returns true if the label has been added, and false otherwise.
 func (ls *Labels) Add(l Label) (b bool) {
-	_, exists := (*ls)[l.Id()]
+	_, exists := (*ls)[l.ID()]
 	if !exists {
-		(*ls)[l.Id()] = l
+		(*ls)[l.ID()] = l
 	}
 
 	b = !exists

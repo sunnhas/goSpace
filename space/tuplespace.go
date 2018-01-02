@@ -24,6 +24,7 @@ type TupleSpace struct {
 	funReg           *function.Registry       // Function registry associated to the tuple space.
 	pol              *policy.Composable       // Policy associated to the tuple space.
 	port             string                   // Port number for the tuple space.
+	connc            chan *net.Conn           // Connection channel.
 	waitingClients   []protocol.WaitingClient // Structure for clients that couldn't initially find a matching tuple.
 }
 
@@ -51,6 +52,7 @@ func CreateTupleSpace(port int) (ts *TupleSpace) {
 		funReg:           &funcReg,
 		pol:              nil,
 		port:             strconv.Itoa(port),
+		connc:            make(chan *net.Conn),
 	}
 
 	go ts.Listen()
@@ -68,29 +70,31 @@ func (ts *TupleSpace) Listen() {
 
 	proto := "tcp4"
 
-	listener, err = net.Listen(proto, ts.port)
+	listener, err = net.Listen(proto, (*ts).port)
 
 	if err != nil {
-		err := fmt.Errorf("%s %s. %s: %s", "could not start listener at ", ts.port, "Error", err)
+		err := fmt.Errorf("%s %s. %s: %s", "could not start listener at ", (*ts).port, "Error", err)
 		panic(err)
 	}
 
 	defer listener.Close()
 
-	var c net.Conn
-	for {
-		c, err = listener.Accept()
+	// Accept remote connections.
+	go func(lp *net.Listener) {
+		l := *lp
+		for {
+			c, err := l.Accept()
 
-		if err != nil {
-			if c != nil {
-				c.Close()
+			if err == nil {
+				ts.connc <- &c
 			}
 
-			return
 		}
+	}(&listener)
 
-		go ts.handle(c)
-
+	// Process all request.
+	for connp := range ts.connc {
+		go ts.handle(*connp)
 	}
 }
 
@@ -100,7 +104,7 @@ func (ts *TupleSpace) handle(conn net.Conn) {
 	defer handleRecover(ts.handle)
 
 	// Make sure the connection closes when method returns.
-	//defer conn.Close()
+	defer conn.Close()
 
 	// Create decoder to the connection to receive the message.
 	dec := gob.NewDecoder(conn)
