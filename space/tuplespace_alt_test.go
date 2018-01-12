@@ -21,11 +21,11 @@ func TestPutUtilities(t *testing.T) {
 }
 
 func TestQueryAndGetUtilities(t *testing.T) {
-	_, ts := NewSpaceAlt("9051")
+	ptp, ts := NewSpaceAlt("9051")
 	if !(ts.Size() == 0) {
 		t.Errorf("Tuple space is not empty")
 	}
-	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9051", nil)
+	//ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9051", nil, nil)
 	Put(*ptp, "hello", false)
 	var s string
 	qtuple, querySucceed := Query(*ptp, &s, false)
@@ -51,7 +51,7 @@ func TestPutPUtilities(t *testing.T) {
 	if !(ts.Size() == 0) {
 		t.Errorf("Tuple space is not empty")
 	}
-	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9053", nil)
+	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9053", nil, nil)
 	PutP(*ptp, "hello", false)
 	var b bool
 	Get(*ptp, "hello", &b)
@@ -65,7 +65,7 @@ func TestQueryPAndGetPUtilities(t *testing.T) {
 	if !(ts.Size() == 0) {
 		t.Errorf("Tuple space is not empty")
 	}
-	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9052", nil)
+	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9052", nil, nil)
 	Put(*ptp, "hello", false)
 
 	var s string
@@ -104,7 +104,7 @@ func TestGetAllAndQueryAll(t *testing.T) {
 	if !(ts.Size() == 0) {
 		t.Errorf("Tuple space is not empty")
 	}
-	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9054", nil)
+	ptp := protocol.CreatePointToPoint("Bookstore", "localhost", "9054", nil, nil)
 	Put(*ptp, 2, 2)
 	Put(*ptp, 2, 2)
 	Put(*ptp, 2, 3)

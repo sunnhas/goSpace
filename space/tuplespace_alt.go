@@ -29,6 +29,10 @@ func tsAltLog(fun interface{}, e *error) {
 	}
 }
 
+// TODO: This is a part of hack, don't touch this.
+// TODO: This can be removed once rearchitecting begins.
+var localChanMap = new(sync.Map)
+
 // NewSpaceAlt creates a representation of a new tuple space.
 func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoint, ts *TupleSpace) {
 	registerTypes()
@@ -53,14 +57,21 @@ func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoi
 			localhost = localhost || a.IsLoopback()
 		}
 
-		l, lerr := net.Listen("tcp4", ":"+u.Port())
+		/*l, lerr := net.Listen("tcp4", ":"+u.Port())
 		if lerr == nil {
 			l.Close()
-		}
+		}*/
 
-		// TODO: Embrace the following hack, and remove it with a better architecture.
+		// TODO: Embrace the following hack, and remove it with architecting differently.
 		connc := make(chan *net.Conn)
-		if err == nil && lerr == nil {
+		val, exists := localChanMap.LoadOrStore(u, connc)
+
+		//if exists {
+		//close(connc)
+		//connc = (val.(chan *net.Conn))
+		//}
+
+		if !exists && err == nil {
 			muTuples := new(sync.RWMutex)
 			muWaitingClients := new(sync.Mutex)
 			tuples := []container.Tuple{}
@@ -85,6 +96,15 @@ func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoi
 
 			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), "0", connc, &funcReg)
 		} else {
+			for localhost && !exists {
+				val, exists = localChanMap.Load(u)
+
+				if exists {
+					connc = (val.(chan *net.Conn))
+					break
+				}
+			}
+
 			var port string
 
 			if !localhost {
@@ -93,7 +113,7 @@ func NewSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.PointToPoi
 				port = "0"
 			}
 
-			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), port, nil, &funcReg)
+			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), port, connc, &funcReg)
 		}
 	} else {
 		ts = nil
@@ -119,7 +139,7 @@ func NewRemoteSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.Poin
 		funcReg := *function.GlobalRegistry
 
 		// TODO: Create a better condition if a hosts name resolves to a local address.
-		ips, err := net.LookupIP(u.Hostname())
+		ips, _ := net.LookupIP(u.Hostname())
 
 		// Test if we are connecting locally to avoid TCP port issue.
 		localhost := false
@@ -127,26 +147,29 @@ func NewRemoteSpaceAlt(url string, cp ...*policy.Composable) (ptp *protocol.Poin
 			localhost = localhost || a.IsLoopback()
 		}
 
-		l, lerr := net.Listen("tcp4", ":"+u.Port())
-		if lerr == nil {
-			l.Close()
+		var connc chan *net.Conn
+
+		for localhost {
+			val, exists := localChanMap.Load(u)
+
+			if exists {
+				connc = (val.(chan *net.Conn))
+				break
+			}
+		}
+
+		var port string
+
+		if !localhost {
+			port = u.Port()
+		} else {
+			port = "0"
 		}
 
 		// NOTE: It is not possible to connect to localhost as a remote space
 		// NOTE: or if the port is taken.
-		if localhost && err == nil && lerr == nil {
-			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), "0", nil, &funcReg)
-		} else {
-			var port string
 
-			if lerr == nil {
-				port = u.Port()
-			} else {
-				port = "0"
-			}
-
-			ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), port, nil, &funcReg)
-		}
+		ptp = protocol.CreatePointToPoint(u.Space(), u.Hostname(), port, connc, &funcReg)
 	} else {
 		ts = nil
 		ptp = nil
